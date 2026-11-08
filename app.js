@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -374,7 +374,7 @@ function customForm(c, x) {
       }
       if (isNew) c.custom.push({ id: uid(), ...data }); else Object.assign(x, data);
     },
-    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>${mode === "date" ? '<button type="button" class="btn ghost" data-cal>Naptárba</button>' : ""}`);
+    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
   const sync = () => {
     const m = form.querySelector('input[name="mode"]:checked').value;
     form.querySelectorAll("[data-mode]").forEach(el => { el.hidden = el.dataset.mode !== m; });
@@ -383,8 +383,6 @@ function customForm(c, x) {
   sync();
   if (!isNew) {
     form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt az emlékeztetőt?", () => { c.custom = c.custom.filter(y => y.id !== x.id); });
-    const cal = form.querySelector("[data-cal]");
-    if (cal) cal.onclick = () => exportCalendar([c], "c:" + x.id);
   }
 }
 
@@ -443,7 +441,7 @@ function calendarEvents(cars, only) {
     const label = c.plate ? `${c.name} (${c.plate})` : c.name;
     for (const i of items(c)) {
       if (only && i.k !== only) continue;
-      if (!i.date) continue;
+      if (!i.date || i.k.startsWith("c:")) continue; // saját emlékeztető csak az appban jelez
       if (!only && i.s === "bad" && dateStatus(i.date).d < -1) continue; // régen lejártat nem rakunk be
       const verb = SERVICES[i.k] ? "esedékes" : "lejár";
       evs.push({ uid: `${c.id}-${i.k.replace(":", "-")}-${i.date}`, date: i.date,
