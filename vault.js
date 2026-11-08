@@ -190,6 +190,77 @@ const Vault = (() => {
   }
   async function disableFace() { meta.face = null; await putMeta(meta); toast("Face ID kikapcsolva. A mappa PIN-kóddal nyílik."); render(); }
 
+  /* ---------- PDF megjelenítés (beépített pdf.js, internet nélkül is) ---------- */
+  let pdfReady = null;
+  function loadPdfJs() {
+    if (!pdfReady) pdfReady = new Promise((res, rej) => {
+      const sc = document.createElement("script");
+      sc.src = "lib/pdfjs/pdf.min.js";
+      sc.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = "lib/pdfjs/pdf.worker.min.js"; res(pdfjsLib); };
+      sc.onerror = () => { pdfReady = null; rej(new Error("pdfjs")); };
+      document.head.appendChild(sc);
+    });
+    return pdfReady;
+  }
+  async function openPdf(bytes) {
+    const lib = await loadPdfJs();
+    return lib.getDocument({ data: new Uint8Array(bytes.slice(0)), standardFontDataUrl: "lib/pdfjs/standard_fonts/" }).promise;
+  }
+  async function pageCanvas(doc, n, cssWidth) {
+    const page = await doc.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const ratio = Math.min(window.devicePixelRatio || 1, 2.5);
+    const vp = page.getViewport({ scale: (cssWidth / base.width) * ratio });
+    const cv = document.createElement("canvas");
+    cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+    page.cleanup();
+    return cv;
+  }
+  async function pdfThumb(bytes) {
+    const doc = await openPdf(bytes);
+    try {
+      const cv = await pageCanvas(doc, 1, 360 / Math.min(window.devicePixelRatio || 1, 2.5));
+      return await new Promise(res => cv.toBlob(b => res(b), "image/jpeg", 0.7));
+    } finally { doc.destroy(); }
+  }
+  async function renderPdfInto(box, bytes, f) {
+    let doc;
+    try { doc = await openPdf(bytes); }
+    catch (e) { box.innerHTML = `<p class="hint">A PDF-et nem sikerült megjeleníteni. A Megosztás gombbal megnyithatod.</p>`; return; }
+    box.innerHTML = "";
+    const label = document.querySelector("#sheet .pdfcount");
+    if (label) label.textContent = `${doc.numPages} oldal`;
+    const width = box.clientWidth || 340;
+    for (let n = 1; n <= doc.numPages; n++) {
+      if (!box.isConnected) break; // közben bezárták
+      const wrap = document.createElement("figure");
+      wrap.className = "pdfpage";
+      wrap.innerHTML = `<figcaption>${n}. oldal</figcaption>`;
+      box.appendChild(wrap);
+      try {
+        const cv = await pageCanvas(doc, n, width);
+        cv.setAttribute("aria-label", `${n}. oldal`);
+        wrap.insertBefore(cv, wrap.firstChild);
+        if (n === 1 && !f.thumbUrl) saveThumbFrom(cv, f);
+      } catch (e) { wrap.insertAdjacentHTML("afterbegin", `<p class="hint">Ez az oldal nem jeleníthető meg.</p>`); }
+    }
+    doc.destroy();
+  }
+  // a korábban feltöltött PDF-ek is kapjanak előnézetet
+  async function saveThumbFrom(cv, f) {
+    try {
+      const t = document.createElement("canvas"), k = 360 / cv.width;
+      t.width = 360; t.height = Math.round(cv.height * k);
+      t.getContext("2d").drawImage(cv, 0, 0, t.width, t.height);
+      const blob = await new Promise(res => t.toBlob(b => res(b), "image/jpeg", 0.7));
+      const r = await getFile(f.id); if (!r || !master) return;
+      const et = await encrypt(master, await blob.arrayBuffer());
+      r.tiv = et.iv; r.thumb = et.ct; await putFile(r);
+      f.thumbUrl = URL.createObjectURL(blob);
+    } catch (e) {}
+  }
+
   /* ---------- fájlok ---------- */
   async function toJpeg(file, max, q) {
     const bmp = await createImageBitmap(file);
@@ -215,7 +286,10 @@ const Vault = (() => {
           const big = await toJpeg(file, 2400, 0.85); type = "image/jpeg";
           data = await big.arrayBuffer();
           thumb = await (await toJpeg(file, 360, 0.7)).arrayBuffer();
-        } else data = await file.arrayBuffer();
+        } else {
+          data = await file.arrayBuffer();
+          try { thumb = await (await pdfThumb(data)).arrayBuffer(); } catch (e) { thumb = null; }
+        }
         const name = file.name.replace(/\.(jpe?g|png|heic|heif|webp|pdf)$/i, "") || "Irat";
         const m = { name, type, size: data.byteLength };
         const em = await encrypt(master, enc.encode(JSON.stringify(m)));
@@ -234,10 +308,11 @@ const Vault = (() => {
   }
   async function view(id) {
     const f = files.find(x => x.id === id); if (!f || !master) return;
-    const blob = await fileBlob(f), url = URL.createObjectURL(blob);
+    const blob = await fileBlob(f);
     const isPdf = f.type === "application/pdf";
+    const url = isPdf ? "" : URL.createObjectURL(blob);
     const form = sheet(`<h2>${esc(f.name)}</h2>
-      ${isPdf ? `<iframe class="pdfview" src="${url}" title="${esc(f.name)}"></iframe>` : `<img class="imgview" src="${url}" alt="${esc(f.name)}">`}
+      ${isPdf ? `<p class="hint pdfcount">PDF betöltése...</p><div class="pdfpages" id="pdfpages"><p class="hint">Oldalak betöltése...</p></div>` : `<img class="imgview" src="${url}" alt="${esc(f.name)}">`}
       <label class="field"><span class="label">Megnevezés</span><input id="f-vname" name="vname" value="${esc(f.name)}" required></label>
       <p class="hint num">${isPdf ? "PDF" : "Kép"}, ${(f.size / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 })} MB, feltöltve ${fmtDate(iso(new Date(f.created)))}</p>`,
       async fd => {
@@ -250,6 +325,7 @@ const Vault = (() => {
         URL.revokeObjectURL(url); render();
       },
       `<button type="button" class="btn danger" data-del>Törlés</button><button type="button" class="btn ghost" data-share>Megosztás</button>`);
+    if (isPdf) blob.arrayBuffer().then(buf => renderPdfInto(form.querySelector("#pdfpages"), buf, f));
     form.querySelector("[data-share]").onclick = () => {
       const file = new File([blob], f.name + (isPdf ? ".pdf" : ".jpg"), { type: f.type });
       if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});

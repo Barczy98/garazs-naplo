@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
