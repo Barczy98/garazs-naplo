@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.5.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -17,6 +17,14 @@ const SERVICES = {
     hint: "Az utolsó vezérlés csere és a gyártói intervallum alapján számol (gyakran 90–150 ezer km vagy 5–6 év, nézd meg a szervizkönyvben). Láncos motornál hagyd üresen." },
 };
 const SERVICE_KEYS = Object.keys(SERVICES);
+// személyes, nem autóhoz kötött lejáratok
+const PERSONAL_TYPES = [
+  ["license", "Jogosítvány", "permis de conducere"],
+  ["idcard", "Személyi igazolvány", "carte de identitate"],
+  ["passport", "Útlevél", "pașaport"],
+];
+const COST_CATS = { fuel: "Üzemanyag", service: "Szerviz", rca: "RCA", rov: "Rovinieta", itp: "ITP", tax: "Gépjárműadó", other: "Egyéb" };
+const MANUAL_CATS = ["rca", "rov", "itp", "tax", "other"];
 const REMIND_OPTIONS = [60, 30, 14, 7, 3, 1];
 
 /* ---------- segédfüggvények ---------- */
@@ -31,13 +39,24 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": 
 const $ = s => document.querySelector(s);
 
 /* ---------- adat ---------- */
-function emptyState() { return { version: 1, sel: null, cars: [], settings: { remind: [30, 7, 1] } }; }
+function emptyState() { return { version: 1, sel: null, cars: [], personal: { docs: {}, notes: {} }, settings: { remind: [30, 7, 1] } }; }
 function normalize(s) {
   const base = emptyState();
   if (!s || !Array.isArray(s.cars)) return base;
   s.settings = Object.assign(base.settings, s.settings || {});
+  s.personal = s.personal || base.personal;
+  s.personal.docs = s.personal.docs || {}; s.personal.notes = s.personal.notes || {};
   s.cars.forEach(c => {
     c.docs = c.docs || {}; c.notes = c.notes || {}; c.log = c.log || []; c.custom = c.custom || [];
+    c.fuel = c.fuel || []; c.costs = c.costs || [];
+    // a saját emlékeztetőként felvett jogosítvány átkerül a személyes lejáratok közé
+    c.custom = c.custom.filter(x => {
+      if (x.mode !== "km" && x.date && /jogos/i.test(x.title || "") && !s.personal.docs.license) {
+        s.personal.docs.license = x.date; s.personal.notes.license = x.note || "";
+        s.movedLicense = true; return false;
+      }
+      return true;
+    });
     for (const k of SERVICE_KEYS) c[k] = c[k] || { date: "", km: c.km || 0, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths };
   });
   if (!s.cars.some(c => c.id === s.sel)) s.sel = s.cars[0]?.id ?? null;
@@ -46,6 +65,8 @@ function normalize(s) {
 let S;
 try { S = normalize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = emptyState(); }
 let tab = "home";
+let logView = "service";   // Napló fül: service | fuel | costs
+let costYear = String(new Date().getFullYear());
 
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
@@ -107,6 +128,17 @@ function items(c) {
     : { k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
   return list;
 }
+function personalItems() {
+  const P = S.personal;
+  return PERSONAL_TYPES.map(([k, t, sub]) => ({ k: "p:" + k, t, sub: P.notes[k] || sub, date: P.docs[k], personal: true, ...dateStatus(P.docs[k]) }));
+}
+function daysText(date) {
+  const d = Math.round((parseDate(date) - today()) / DAY);
+  if (d < 0) return `${-d} napja lejárt`;
+  if (d === 0) return "ma";
+  if (d === 1) return "holnap";
+  return `${d.toLocaleString("hu-HU")} nap múlva`;
+}
 const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
 const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
@@ -143,7 +175,7 @@ function render() {
     if (tab === "log") h += renderLog(c);
   }
   $("#app").innerHTML = h;
-  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Szervizkönyv"], ["vault", "Iratok"], ["settings", "Beállítások"]];
+  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Napló"], ["vault", "Iratok"], ["settings", "Beállítások"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) =>
     `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${l}</button>`).join("");
 }
@@ -169,7 +201,7 @@ function odometer(c) {
 
 const rowHtml = i => `<button class="r" data-edit="${esc(i.k)}">
   <span class="n ${i.s}">${i.n}<small>${i.u}</small></span>
-  <span class="rt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.s === "none" ? i.sub : i.service ? i.sub : (i.s === "bad" ? "lejárt " : "") + fmtDate(i.date) + (i.sub ? ", " + i.sub : ""))}</span></span>
+  <span class="rt"><span class="t">${esc(i.t)}${i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.s === "none" ? i.sub : i.service ? i.sub : (i.s === "bad" ? "lejárt " : "") + fmtDate(i.date) + (i.sub ? ", " + i.sub : ""))}</span></span>
 </button>`;
 
 function gaugeHtml(i) {
@@ -198,7 +230,7 @@ function renderWelcome() {
 }
 
 function renderHome(c, list) {
-  const urgent = list.filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
+  const urgent = [...list, ...personalItems()].filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
   const missing = list.filter(i => i.s === "none" && !i.service);
   const services = list.filter(i => i.service);
   let h = odometer(c);
@@ -207,33 +239,48 @@ function renderHome(c, list) {
   h += `<section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${services.map(gaugeHtml).join("")}</div></section>`;
   if (missing.length) h += `<section class="section"><h2 class="h">Még nincs megadva</h2><div class="rows">${missing.map(rowHtml).join("")}</div></section>`;
   const last = [...c.log].sort((a, b) => b.date.localeCompare(a.date))[0];
-  h += `<section class="section"><h2 class="h">Utolsó szerviz <button class="link" data-tab="log">Szervizkönyv</button></h2>
+  h += `<section class="section"><h2 class="h">Utolsó szerviz <button class="link" data-tab="log" data-lv="service">Szervizkönyv</button></h2>
     <div class="rows">${last ? entryHtml(last) : `<div class="empty">Még nincs bejegyzés.</div>`}</div></section>`;
   return h;
 }
 
-function renderDocs(c, list) {
-  const dated = list.filter(i => !i.service && i.date).sort((a, b) => a.date.localeCompare(b.date));
-  const undated = list.filter(i => !i.service && !i.date);
+function timeline(list) {
+  const dated = list.filter(i => i.date).sort((a, b) => a.date.localeCompare(b.date));
+  const undated = list.filter(i => !i.date);
   let tl = "", month = "";
   for (const i of dated) {
     const m = monthLabel(i.date);
     if (m !== month) { tl += `<div class="m">${m}</div>`; month = m; }
     tl += `<button class="ev ${i.s}" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span>
-      <span class="d num">${i.s === "bad" ? "lejárt<br>" + shortDate(i.date) : shortDate(i.date)}</span></button>`;
+      <span class="d num">${shortDate(i.date)}<small>${daysText(i.date)}</small></span></button>`;
   }
   if (undated.length) {
     tl += `<div class="m">Nincs megadva</div>` + undated.map(i => `<button class="ev none" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span><span class="d">–</span></button>`).join("");
   }
+  return `<div class="rows tlbox"><div class="tl">${tl}</div></div>`;
+}
+
+function renderDocs(c, list) {
   return `<section class="section"><h2 class="h">Lejáratok <small>${esc(c.plate || "")}</small></h2>
-    <div class="rows tlbox"><div class="tl">${tl}</div></div>
+    ${timeline(list.filter(i => !i.service))}
     <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
     <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
     <p class="hint">A Naptárba került eseménynél az iPhone ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
-    <section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(gaugeHtml).join("")}</div></section>`;
+    <section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(gaugeHtml).join("")}</div></section>
+    <section class="section"><h2 class="h">Személyes <small>minden autónál ugyanaz</small></h2>
+    ${timeline(personalItems())}
+    <button class="btn quiet wide" data-act="calpersonal">Személyes lejáratok a Naptárba</button></section>`;
 }
 
 function renderLog(c) {
+  const seg = `<div class="segbar" role="tablist">${[["service", "Szerviz"], ["fuel", "Tankolás"], ["costs", "Költségek"]].map(([k, l]) =>
+    `<button role="tab" aria-pressed="${logView === k}" data-lv="${k}">${l}</button>`).join("")}</div>`;
+  if (logView === "fuel") return seg + renderFuel(c);
+  if (logView === "costs") return seg + renderCosts(c);
+  return seg + renderService(c);
+}
+
+function renderService(c) {
   const list = [...c.log].sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km);
   const year = String(today().getFullYear());
   const totalYear = list.filter(e => e.date.startsWith(year)).reduce((s, e) => s + Number(e.cost || 0), 0);
@@ -242,6 +289,118 @@ function renderLog(c) {
     <div class="rows">${list.length ? list.map(entryHtml).join("")
       : `<div class="empty">Még nincs bejegyzés. A következő szerviz után add hozzá az „Új bejegyzés” gombbal.</div>`}</div>
     ${list.length ? `<div class="sum num"><span>${year}-ban ${fmtMoney(totalYear)}</span><span>Összesen ${fmtMoney(total)}, ${list.length} bejegyzés</span></div>` : ""}</section>`;
+}
+
+/* ---------- tankolás ---------- */
+// fogyasztás: két tele tankolás között tankolt liter / megtett km
+function fuelStats(c) {
+  const fills = [...c.fuel].sort((a, b) => a.km - b.km || a.date.localeCompare(b.date));
+  const per = {}; let L = 0, K = 0, last = null, prevFull = null, since = 0;
+  for (const f of fills) {
+    since += Number(f.liters);
+    if (f.full) {
+      if (prevFull && f.km > prevFull.km) {
+        const km = f.km - prevFull.km, cons = since / km * 100;
+        per[f.id] = cons; L += since; K += km; last = cons;
+      }
+      prevFull = f; since = 0;
+    }
+  }
+  return { per, avg: K ? L / K * 100 : null, last };
+}
+const fmtL = n => n.toLocaleString("hu-HU", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+
+function renderFuel(c) {
+  const st = fuelStats(c);
+  const list = [...c.fuel].sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km);
+  const year = String(today().getFullYear());
+  const yearCost = c.fuel.filter(f => f.date.startsWith(year)).reduce((s, f) => s + Number(f.cost || 0), 0);
+  let h = `<section class="section"><h2 class="h">Tankolás <button class="btn" data-act="addfuel">Új tankolás</button></h2>`;
+  if (list.length) h += `<div class="stats">
+      <div><span class="big num">${st.avg != null ? fmtL(st.avg) : "–"}</span><span class="s">átlag l/100 km</span></div>
+      <div><span class="big num">${st.last != null ? fmtL(st.last) : "–"}</span><span class="s">legutóbbi</span></div>
+      <div><span class="big num">${yearCost.toLocaleString("hu-HU")}</span><span class="s">lej ${year}-ban</span></div></div>`;
+  h += `<div class="rows">${list.length ? list.map(f => `<button class="svc" data-fuel="${f.id}">
+      <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.full ? "" : ' <span class="tag">nem tele</span>'}</span>
+      <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${(f.cost / f.liters).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
+      ${st.per[f.id] != null ? `<span class="cons num">${fmtL(st.per[f.id])}<small>l/100</small></span>` : ""}</button>`).join("")
+    : `<div class="empty">Még nincs tankolás. A fogyasztást két tele tankolás között számolja, ezért mindig tele tankolás után érdemes beírni.</div>`}</div>
+    <p class="hint">A fogyasztás két tele tankolás közötti km-ből és literből jön ki. Minden tankolás a km-órát is frissíti.</p></section>`;
+  return h;
+}
+
+function fuelForm(c, f) {
+  const isNew = !f; f = f || { date: iso(today()), km: c.km, full: true };
+  const form = sheet(`<h2>${isNew ? "Új tankolás" : "Tankolás"}</h2>
+    <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
+    <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
+    ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
+    <label class="check"><input type="checkbox" id="f-full" name="full" ${f.full ? "checked" : ""}><span>Tele tankoltam</span></label>`,
+    d => {
+      const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: !!d.full };
+      if (isNew) c.fuel.push({ id: uid(), ...data }); else Object.assign(f, data);
+      if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
+      if (isNew) toast("Tankolás mentve.");
+    },
+    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
+  if (!isNew) form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt a tankolást?", () => { c.fuel = c.fuel.filter(x => x.id !== f.id); });
+}
+
+/* ---------- költségek ---------- */
+function yearCosts(c, year) {
+  const by = Object.fromEntries(Object.keys(COST_CATS).map(k => [k, 0]));
+  c.fuel.forEach(f => { if (f.date.startsWith(year)) by.fuel += Number(f.cost || 0); });
+  c.log.forEach(e => { if (e.date.startsWith(year)) by.service += Number(e.cost || 0); });
+  c.costs.forEach(x => { if (x.date.startsWith(year)) by[x.cat in by ? x.cat : "other"] += Number(x.amount || 0); });
+  const total = Object.values(by).reduce((a, b) => a + b, 0);
+  // megtett km az évben a tankolások és szervizek km-állásaiból (közelítés)
+  const kms = [...c.fuel, ...c.log].filter(e => e.date.startsWith(year)).map(e => Number(e.km));
+  const driven = kms.length > 1 ? Math.max(...kms) - Math.min(...kms) : 0;
+  return { by, total, driven };
+}
+function costYears(c) {
+  const ys = new Set([String(today().getFullYear())]);
+  [...c.fuel, ...c.log].forEach(e => ys.add(e.date.slice(0, 4)));
+  c.costs.forEach(x => ys.add(x.date.slice(0, 4)));
+  return [...ys].sort().reverse();
+}
+function renderCosts(c) {
+  const years = costYears(c);
+  if (!years.includes(costYear)) costYear = years[0];
+  const y = yearCosts(c, costYear);
+  const rows = Object.entries(y.by).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const max = rows.length ? rows[0][1] : 1;
+  let h = `<section class="section"><div class="years">${years.map(yr => `<button class="toggle" aria-pressed="${yr === costYear}" data-year="${yr}">${yr}</button>`).join("")}</div>
+    <div class="costhead"><span class="big num">${fmtMoney(y.total)}</span>
+    <span class="hint num">${costYear}-ban összesen${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km (${fmtKm(y.driven)} alapján)` : ""}</span></div>`;
+  h += rows.length ? `<div class="rows bars" role="table" aria-label="Költségek kategóriánként, ${costYear}">${rows.map(([k, val]) => `<div class="bar" role="row">
+      <span class="bl" role="cell">${COST_CATS[k]}</span>
+      <span class="bt" role="presentation"><span style="width:${Math.max(2, val / max * 100)}%"></span></span>
+      <span class="bv num" role="cell">${val.toLocaleString("hu-HU")} lej <small>${Math.round(val / y.total * 100)}%</small></span></div>`).join("")}</div>`
+    : `<div class="rows"><div class="empty">${costYear}-ban még nincs rögzített kiadás.</div></div>`;
+  h += `</section>`;
+  const manual = c.costs.filter(x => x.date.startsWith(costYear)).sort((a, b) => b.date.localeCompare(a.date));
+  h += `<section class="section"><h2 class="h">Egyéb kiadások <button class="btn" data-act="addcost">Új kiadás</button></h2>
+    <div class="rows">${manual.length ? manual.map(x => `<button class="svc" data-cost="${x.id}"><span class="svc-main">
+      <span class="t">${COST_CATS[x.cat] || "Egyéb"}${x.note ? `: ${esc(x.note)}` : ""}</span><span class="s num">${fmtDate(x.date)}</span></span>
+      <span class="cost num">${fmtMoney(x.amount)}</span></button>`).join("")
+      : `<div class="empty">RCA, rovinieta, ITP, adó vagy bármi más (pl. mosás, parkolás).</div>`}</div>
+    <p class="hint">A tankolások és a szervizek ára magától bekerül. A lejáratoknál is beírhatod a megújítás árát.</p></section>`;
+  return h;
+}
+function costForm(c, x) {
+  const isNew = !x; x = x || { date: iso(today()), cat: "rca" };
+  const form = sheet(`<h2>${isNew ? "Új kiadás" : "Kiadás"}</h2>
+    <label class="field"><span class="label">Mire</span><select id="f-cat" name="cat">${MANUAL_CATS.map(k => `<option value="${k}" ${x.cat === k ? "selected" : ""}>${COST_CATS[k]}</option>`).join("")}</select></label>
+    <div class="row2">${field("amount", "Összeg (lej)", `type="number" inputmode="decimal" step="any" required min="0" value="${v(x.amount)}"`)}${field("date", "Dátum", `type="date" required value="${v(x.date)}"`)}</div>
+    ${field("note", "Megjegyzés", `value="${v(x.note)}" placeholder="pl. Allianz, 12 hónap"`)}`,
+    d => {
+      const data = { cat: d.cat, amount: Number(d.amount), date: d.date, note: d.note.trim() };
+      if (isNew) c.costs.push({ id: uid(), ...data }); else Object.assign(x, data);
+      costYear = data.date.slice(0, 4);
+    },
+    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
+  if (!isNew) form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt a kiadást?", () => { c.costs = c.costs.filter(y => y.id !== x.id); });
 }
 
 function remindText() {
@@ -257,7 +416,7 @@ function renderSettings() {
       <p class="hint">Hány nappal a lejárat előtt szóljon a Naptár (reggel 9-kor):</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">${REMIND_OPTIONS.map(d =>
         `<button class="toggle" aria-pressed="${r.includes(d)}" data-remind="${d}">${d} nap</button>`).join("")}</div>
-      <button class="btn" data-act="calall" ${S.cars.length ? "" : "disabled"}>Összes autó lejáratai a Naptárba</button>
+      <button class="btn" data-act="calall">Minden lejárat a Naptárba (autók és személyes)</button>
       <p class="hint">Ezt elég egyszer megcsinálni, és utána akkor, ha valamelyik dátum megváltozik.</p>
     </div></div>
     <div class="section" style="margin-top:0"><h2>Mentés</h2><div class="card">
@@ -335,6 +494,7 @@ function docForm(c, k) {
     if (cal) cal.onclick = () => exportCalendar([c], k);
     return;
   }
+  if (k.startsWith("p:")) return personalForm(k.slice(2));
   if (k.startsWith("c:")) {
     const x = c.custom.find(y => "c:" + y.id === k);
     return customForm(c, x);
@@ -342,12 +502,29 @@ function docForm(c, k) {
   const t = DOC_TYPES.find(d => d[0] === k);
   const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]} · ${esc(c.name)}</p>
     ${field("exp", "Lejárat dátuma", `type="date" value="${v(c.docs[k])}"`)}
-    ${field("note", "Megjegyzés", `value="${v(c.notes[k])}" placeholder="pl. biztosító, kötvényszám, ár"`)}
-    <p class="hint">Hagyd üresen a dátumot, ha erre az autóra nem vonatkozik.</p>`,
-    f => { c.docs[k] = f.exp; c.notes[k] = f.note.trim(); },
+    ${c.docs[k] ? `<p class="hint num">${daysText(c.docs[k])}</p>` : ""}
+    ${field("note", "Megjegyzés", `value="${v(c.notes[k])}" placeholder="pl. biztosító, kötvényszám"`)}
+    ${field("price", "Ha most újítottad meg: mennyibe került? (lej)", `type="number" inputmode="decimal" step="any" min="0"`)}
+    <p class="hint">Az ár bekerül a költségek közé. Hagyd üresen a dátumot, ha erre az autóra nem vonatkozik.</p>`,
+    f => {
+      c.docs[k] = f.exp; c.notes[k] = f.note.trim();
+      if (f.price) { c.costs.push({ id: uid(), cat: k, amount: Number(f.price), date: iso(today()), note: f.note.trim() }); toast("Lejárat és ár mentve."); }
+    },
     c.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], k);
+}
+
+function personalForm(k) {
+  const t = PERSONAL_TYPES.find(d => d[0] === k), P = S.personal;
+  const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]}, személyes, nem autóhoz kötött</p>
+    ${field("exp", "Lejárat dátuma", `type="date" value="${v(P.docs[k])}"`)}
+    ${P.docs[k] ? `<p class="hint num">${daysText(P.docs[k])}</p>` : ""}
+    ${field("note", "Megjegyzés", `value="${v(P.notes[k])}" placeholder="pl. kategóriák: B"`)}`,
+    f => { P.docs[k] = f.exp; P.notes[k] = f.note.trim(); },
+    P.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
+  const cal = form.querySelector("[data-cal]");
+  if (cal) cal.onclick = () => exportCalendar([], "p:" + k, true);
 }
 
 function customForm(c, x) {
@@ -360,7 +537,7 @@ function customForm(c, x) {
         <label><input type="radio" name="mode" value="date" ${mode === "date" ? "checked" : ""}><span>Dátum szerint</span></label>
         <label><input type="radio" name="mode" value="km" ${mode === "km" ? "checked" : ""}><span>Km-állás szerint</span></label>
       </div></div>
-    <div data-mode="date">${field("date", "Dátum", `type="date" value="${v(x.date)}"`)}</div>
+    <div data-mode="date">${field("date", "Dátum", `type="date" value="${v(x.date)}"`)}${x.date ? `<p class="hint num" style="margin-top:4px">${daysText(x.date)}</p>` : ""}</div>
     <div data-mode="km">${field("km", "Ennél a km-állásnál", `type="number" inputmode="numeric" min="0" value="${v(x.km)}" placeholder="pl. ${Math.ceil((Number(c.km) + 10000) / 1000) * 1000}"`)}
       <p class="hint" style="margin-top:4px">Most ${fmtKm(c.km)}. Ha már csak kevés van hátra, narancssárgára vált.</p></div>
     ${field("note", "Megjegyzés", `value="${v(x.note)}"`)}`,
@@ -376,7 +553,9 @@ function customForm(c, x) {
       }
       if (isNew) c.custom.push({ id: uid(), ...data }); else Object.assign(x, data);
     },
-    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
+    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>${mode === "date" ? '<button type="button" class="btn ghost" data-cal>Naptárba</button>' : ""}`);
+  const cal = form.querySelector("[data-cal]");
+  if (cal) cal.onclick = () => exportCalendar([c], "c:" + x.id);
   const sync = () => {
     const m = form.querySelector('input[name="mode"]:checked').value;
     form.querySelectorAll("[data-mode]").forEach(el => { el.hidden = el.dataset.mode !== m; });
@@ -437,24 +616,29 @@ function buildIcs(events) {
   L.push("END:VCALENDAR");
   return L.map(fold).join("\r\n") + "\r\n";
 }
-function calendarEvents(cars, only) {
+function calendarEvents(cars, only, personal) {
   const evs = [];
+  if (personal) for (const i of personalItems()) {
+    if (only && i.k !== only) continue;
+    if (!i.date || (!only && i.s === "bad" && dateStatus(i.date).d < -1)) continue;
+    evs.push({ uid: `personal-${i.k.slice(2)}-${i.date}`, date: i.date, title: `${i.t} lejár`, desc: `${i.sub}\nGarázs napló` });
+  }
   for (const c of cars) {
     const label = c.plate ? `${c.name} (${c.plate})` : c.name;
     for (const i of items(c)) {
       if (only && i.k !== only) continue;
-      if (!i.date || i.k.startsWith("c:")) continue; // saját emlékeztető csak az appban jelez
+      if (!i.date) continue; // a km szerinti emlékeztetőnek nincs dátuma, az csak az appban jelez
       if (!only && i.s === "bad" && dateStatus(i.date).d < -1) continue; // régen lejártat nem rakunk be
-      const verb = SERVICES[i.k] ? "esedékes" : "lejár";
+      const verb = SERVICES[i.k] ? "esedékes" : i.k.startsWith("c:") ? "" : "lejár";
       evs.push({ uid: `${c.id}-${i.k.replace(":", "-")}-${i.date}`, date: i.date,
-        title: `${i.t} ${verb} – ${c.name}`,
+        title: `${i.t}${verb ? " " + verb : ""} – ${c.name}`,
         desc: `${label}\n${SERVICES[i.k] ? SERVICES[i.k].t + ": " + i.sub : i.sub}\nGarázs napló` });
     }
   }
   return evs;
 }
-function exportCalendar(cars, only) {
-  const evs = calendarEvents(cars, only);
+function exportCalendar(cars, only, personal) {
+  const evs = calendarEvents(cars, only, personal);
   if (!evs.length) { toast("Nincs olyan dátum, amit a Naptárba lehetne tenni."); return; }
   const name = only ? "garazs-emlekezteto.ics" : "garazs-lejaratok.ics";
   deliverFile(name, "text/calendar", buildIcs(evs), true);
@@ -533,11 +717,15 @@ document.addEventListener("click", e => {
   if (b.closest("#sheet")) return; // a lapok saját gombjai
   const c = car();
   if (b.dataset.car) { S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home"; save(); render(); return; }
-  if (b.dataset.tab) {
+  if (b.dataset.tab && !b.dataset.lv) {
     // a Face ID-nak közvetlenül a koppintásból kell indulnia
     if (b.dataset.tab === "vault" && Vault.hasFace() && !Vault.isOpen()) Vault.unlockFace();
     tab = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.edit) { docForm(c, b.dataset.edit); return; }
+  if (b.dataset.lv) { logView = b.dataset.lv; if (b.dataset.tab) tab = b.dataset.tab; render(); return; }
+  if (b.dataset.fuel) { fuelForm(c, c.fuel.find(x => x.id === b.dataset.fuel)); return; }
+  if (b.dataset.cost) { costForm(c, c.costs.find(x => x.id === b.dataset.cost)); return; }
+  if (b.dataset.year) { costYear = b.dataset.year; render(); return; }
   if (b.dataset.entry) { logForm(c, c.log.find(x => x.id === b.dataset.entry)); return; }
   if (b.dataset.remind) {
     const d = Number(b.dataset.remind), r = S.settings.remind;
@@ -553,7 +741,10 @@ document.addEventListener("click", e => {
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c]); break;
-    case "calall": exportCalendar(S.cars); break;
+    case "calall": exportCalendar(S.cars, null, true); break;
+    case "calpersonal": exportCalendar([], null, true); break;
+    case "addfuel": fuelForm(c, null); break;
+    case "addcost": costForm(c, null); break;
     case "export": exportBackup(); break;
     case "import": $("#importfile").click(); break;
   }
@@ -566,3 +757,4 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) rend
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
 Vault.init();
+if (S.movedLicense) { delete S.movedLicense; save(); setTimeout(() => toast("A jogosítványod átkerült a Lejáratok fül Személyes részébe."), 600); }

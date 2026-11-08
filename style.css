@@ -18,7 +18,7 @@
   --signal-ink:#1b1400;
   --drum:#141a1f; --drum-fg:#f4f6f2; --drum-muted:#b9c3be;
   --bad:#c0261d; --bad-bg:#f8e1de; --warn:#9a5b00; --warn-bg:#fbecd0; --ok:#24704a; --ok-bg:#dcefe3;
-  --plate:#0a3a9e; --stamp:#0a3a9e;
+  --plate:#0a3a9e; --stamp:#0a3a9e; --bar:#2f5d8a;
   --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
@@ -26,7 +26,7 @@
   --paper:#111613; --card:#192019; --ink:#e7ece6; --muted:#97a39c; --rule:#2a332c;
   --signal:#f5b82e; --drum:#060908;
   --bad:#ff8b80; --bad-bg:#3b1915; --warn:#f2b45c; --warn-bg:#382a12; --ok:#79d3a0; --ok-bg:#15301f;
-  --stamp:#8fb0ff;
+  --stamp:#8fb0ff; --bar:#7fa6d6;
   color-scheme:dark}}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -119,7 +119,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .ev.ok::before{border-color:var(--ok)}
 .ev.none::before{border-style:dashed}
 .ev .d{flex:none;text-align:right;font-size:14px;color:var(--muted);line-height:1.3;padding-top:2px}
+.ev .d small{display:block;font-size:12.5px;font-weight:600}
 .ev.bad .d{color:var(--bad);font-weight:700} .ev.warn .d{color:var(--warn);font-weight:700}
+.ev.ok .d small{color:var(--muted);font-weight:500}
 
 /* szervizkönyv pecséttel */
 .svc{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:13px 14px;border:0;border-top:1px solid var(--rule);background:none}
@@ -203,3 +205,26 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .pdfpage canvas{width:100%;height:auto;background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
 .pdfpage figcaption{font-size:12.5px;color:var(--muted);text-align:center}
 @media (prefers-reduced-motion:reduce){.dots.shake{animation:none}}
+
+/* napló: szerviz / tankolás / költségek */
+.tag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:4px;vertical-align:2px}
+.segbar{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:3px}
+.segbar button{border:0;background:none;border-radius:9px;padding:8px 4px;font-weight:650;color:var(--muted);text-align:center}
+.segbar button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stats > div{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;display:grid;gap:2px;min-width:0}
+.big{font-size:26px;font-weight:800;font-stretch:72%;line-height:1.1}
+.cons{flex:none;text-align:right;font-weight:800;font-stretch:72%;font-size:22px;line-height:1}
+.cons small{display:block;font-size:11px;font-weight:600;font-stretch:100%;color:var(--muted)}
+.years{display:flex;gap:8px;flex-wrap:wrap}
+.costhead{display:grid;gap:2px}
+.costhead .big{font-size:36px}
+.bars{padding:6px 14px}
+.bar{display:grid;grid-template-columns:92px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--rule)}
+.bar:first-child{border-top:0}
+.bl{font-weight:600;font-size:14.5px}
+.bt{height:10px;display:block}
+.bt span{display:block;height:100%;background:var(--bar);border-radius:0 4px 4px 0}
+.bv{font-size:14.5px;font-weight:650;text-align:right;white-space:nowrap}
+.bv small{color:var(--muted);font-weight:500;margin-left:2px}
+select{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);width:100%}

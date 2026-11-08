@@ -1,6 +1,6 @@
 # Garázs napló
 
-Saját webapp az autók lejáratainak (RCA, rovinieta, ITP, gépjárműadó), az olajcserének és a szervizkönyvnek a követésére. iPhone-on a kezdőképernyőre téve appként működik, internet nélkül is.
+Saját webapp az autók lejáratainak (RCA, rovinieta, ITP, gépjárműadó), a személyes lejáratoknak (jogosítvány, személyi, útlevél), az olajcserének, a szervizkönyvnek, a tankolásoknak és a költségeknek a követésére. iPhone-on a kezdőképernyőre téve appként működik, internet nélkül is.
 
 - Az adatok csak a telefonon tárolódnak (a kódban nincs személyes adat).
 - Emlékeztetők: a lejáratok `.ics` fájlként kerülnek az iPhone Naptárába, riasztással.
