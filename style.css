@@ -144,8 +144,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 /* alsó menü */
 .tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--rule);z-index:5;
   padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-.tabs-in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
-.tab{background:none;border:none;padding:9px 2px 8px;font-size:11.5px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabs-in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.tab{background:none;border:none;padding:9px 0 8px;font-size:10.5px;letter-spacing:-.01em;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
 .tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 .tab::after{content:"";width:18px;height:3px;border-radius:2px;background:transparent;margin-top:2px}
 .tab[aria-selected="true"]{color:var(--ink)}
@@ -175,3 +175,28 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .card{background:var(--card);border:1px solid var(--rule);border-radius:14px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:90vw}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+
+/* iratok mappa */
+.vintro{padding:24px 18px;display:grid;gap:12px;justify-items:center;text-align:center}
+.vicon{width:56px;height:56px;stroke:var(--ink);fill:none;stroke-width:1.5}
+.lock{display:grid;gap:16px;justify-items:center;text-align:center;padding-top:4vh}
+.dots{display:flex;gap:16px;justify-content:center;padding:6px 0}
+.dots span{width:15px;height:15px;border-radius:50%;border:2px solid var(--ink)}
+.dots span.on{background:var(--ink)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+.keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px;justify-content:center}
+.keypad button{width:72px;height:72px;border-radius:50%;border:1px solid var(--rule);background:var(--card);font-size:28px;font-weight:600;font-stretch:90%;text-align:center}
+.keypad button:active{background:var(--rule)}
+.sheet .keypad{margin:6px 0}
+.vbar{display:flex;gap:10px}
+.vbar .btn:first-child{flex:1}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.vfile{display:grid;gap:6px;background:none;border:0;padding:0;min-width:0}
+.vfile img,.vfile .pdf{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;border:1px solid var(--rule);background:var(--card)}
+.vfile .pdf{display:grid;place-items:center;font-weight:800;font-stretch:75%;font-size:26px;color:var(--bad)}
+.vname{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vset{padding:14px;display:grid;gap:10px}
+.imgview{width:100%;max-height:60vh;object-fit:contain;border-radius:10px;background:var(--paper)}
+.pdfview{width:100%;height:60vh;border:1px solid var(--rule);border-radius:10px;background:#fff}
+@media (prefers-reduced-motion:reduce){.dots.shake{animation:none}}

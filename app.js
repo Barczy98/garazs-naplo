@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.4.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -123,6 +123,7 @@ const ICONS = {
   docs: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
   log: '<path d="M14 6a4 4 0 0 0-5 5L4 16l3 3 5-5a4 4 0 0 0 5-5l-2 2-2-1-1-2z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  vault: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 13v-1a2 2 0 0 1 4 0v1M9.5 13h5v3.5h-5z"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
 };
 
@@ -130,6 +131,7 @@ function render() {
   const c = car();
   let h = "";
   if (tab === "settings") h = renderSettings();
+  else if (tab === "vault") h = Vault.html();
   else if (!c) h = renderWelcome();
   else {
     const list = items(c);
@@ -141,7 +143,7 @@ function render() {
     if (tab === "log") h += renderLog(c);
   }
   $("#app").innerHTML = h;
-  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Szervizkönyv"], ["settings", "Beállítások"]];
+  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Szervizkönyv"], ["vault", "Iratok"], ["settings", "Beállítások"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) =>
     `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${l}</button>`).join("");
 }
@@ -484,9 +486,18 @@ async function deliverFile(name, mime, text, isCalendar) {
 
 async function exportBackup() {
   const name = `garazs-mentes-${iso(today())}.json`;
-  const data = JSON.stringify({ ...S, lastBackup: undefined, app: "garazs-naplo", exported: new Date().toISOString() }, null, 1);
-  const ok = await deliverFile(name, "application/json", data, false);
-  if (ok) { S.lastBackup = iso(today()); save(); render(); toast("Mentés kész. Tedd a Fájlokba vagy az iCloud Drive-ra."); }
+  let vault = null;
+  try { vault = await Vault.exportData(); } catch (e) { toast("Az iratok mappát nem sikerült a mentéshez olvasni."); }
+  const data = JSON.stringify({ ...S, lastBackup: undefined, vault, app: "garazs-naplo", exported: new Date().toISOString() });
+  const mb = (data.length / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 });
+  // a megosztás ablakot új koppintásból kell nyitni, ezért egy gombbal kérjük
+  const form = sheet(`<h2>Mentés kész</h2><p>${S.cars.length} autó${vault ? `, ${vault.files.length} irat (titkosítva)` : ""}, ${mb} MB.</p>
+    <p class="hint">Mentsd a Fájlokba vagy az iCloud Drive-ra.${vault ? " Az iratok visszaállításához a mappa PIN-kódja kell." : ""}</p>`, null,
+    `<button type="button" class="btn" data-go>Mentés a Fájlokba</button>`);
+  form.querySelector("[data-go]").onclick = async () => {
+    const ok = await deliverFile(name, "application/json", data, false);
+    if (ok) { closeSheet(); S.lastBackup = iso(today()); save(); render(); toast("Mentés kész."); }
+  };
 }
 
 function importBackup(file) {
@@ -497,11 +508,12 @@ function importBackup(file) {
     if (!data || data.app !== "garazs-naplo" || !Array.isArray(data.cars)) {
       toast("Ez a fájl nem Garázs napló mentés."); return;
     }
-    const form = sheet(`<h2>Visszaállítás</h2><p>A mentésben ${data.cars.length} autó van (${data.cars.map(c => esc(c.name)).join(", ")}), készült: ${fmtDate((data.exported || "").slice(0, 10))}.</p>
+    const form = sheet(`<h2>Visszaállítás</h2><p>A mentésben ${data.cars.length} autó van (${data.cars.map(c => esc(c.name)).join(", ")})${data.vault ? ` és ${data.vault.files.length} irat` : ""}, készült: ${fmtDate((data.exported || "").slice(0, 10))}.</p>
       <p class="hint">A visszaállítás lecseréli a jelenlegi adatokat.</p>`, null,
       `<button type="button" class="btn" data-yes>Visszaállítás</button>`);
-    form.querySelector("[data-yes]").onclick = () => {
-      delete data.app; delete data.exported;
+    form.querySelector("[data-yes]").onclick = async () => {
+      if (data.vault) { try { await Vault.importData(data.vault); } catch (e) { toast("Az iratokat nem sikerült visszaállítani."); } }
+      delete data.app; delete data.exported; delete data.vault;
       S = normalize(data); save(); closeSheet(); tab = "home"; render(); toast("Adatok visszaállítva.");
     };
   };
@@ -520,8 +532,11 @@ document.addEventListener("click", e => {
   if (b.hasAttribute("data-close")) { closeSheet(); return; }
   if (b.closest("#sheet")) return; // a lapok saját gombjai
   const c = car();
-  if (b.dataset.car) { S.sel = b.dataset.car; if (tab === "settings") tab = "home"; save(); render(); return; }
-  if (b.dataset.tab) { tab = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  if (b.dataset.car) { S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home"; save(); render(); return; }
+  if (b.dataset.tab) {
+    // a Face ID-nak közvetlenül a koppintásból kell indulnia
+    if (b.dataset.tab === "vault" && Vault.hasFace() && !Vault.isOpen()) Vault.unlockFace();
+    tab = b.dataset.tab; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.edit) { docForm(c, b.dataset.edit); return; }
   if (b.dataset.entry) { logForm(c, c.log.find(x => x.id === b.dataset.entry)); return; }
   if (b.dataset.remind) {
@@ -550,3 +565,4 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) rend
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
+Vault.init();
