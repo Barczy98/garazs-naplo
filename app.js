@@ -1,11 +1,10 @@
 "use strict";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
 const DOC_TYPES = [
   ["rca", "RCA biztosítás", "kötelező felelősségbiztosítás"],
-  ["casco", "CASCO", "casco biztosítás"],
   ["rov", "Rovinieta", "úthasználati díj"],
   ["itp", "ITP", "műszaki vizsga"],
   ["trusa", "Elsősegélycsomag", "trusă medicală, kötelező"],
@@ -60,42 +59,54 @@ const car = () => S.cars.find(c => c.id === S.sel);
 
 /* ---------- állapotszámítás ---------- */
 function dateStatus(date) {
-  if (!date) return { s: "none", txt: "nincs megadva", d: 1e9 };
+  if (!date) return { s: "none", txt: "nincs megadva", d: 1e9, n: "–", u: "" };
   const days = Math.round((parseDate(date) - today()) / DAY);
-  if (days < 0) return { s: "bad", txt: `lejárt ${-days} napja`, d: days };
-  if (days === 0) return { s: "bad", txt: "ma jár le", d: 0 };
-  if (days <= 30) return { s: "warn", txt: `${days} nap múlva`, d: days };
-  return { s: "ok", txt: `${days} nap múlva`, d: days };
+  if (days < 0) return { s: "bad", txt: `lejárt ${-days} napja`, d: days, n: -days, u: "napja" };
+  if (days === 0) return { s: "bad", txt: "ma jár le", d: 0, n: "ma", u: "" };
+  if (days <= 30) return { s: "warn", txt: `${days} nap múlva`, d: days, n: days, u: "nap" };
+  return { s: "ok", txt: `${days} nap múlva`, d: days, n: days, u: "nap" };
 }
 function serviceInfo(c, key) {
   const o = c[key];
-  if (!o.date) return { s: "none", txt: "nincs megadva", d: 1e9, sub: "add meg az utolsó cserét", date: "" };
+  if (!o.date) return { s: "none", txt: "nincs megadva", d: 1e9, sub: "koppints ide, és add meg az utolsó cserét", date: "", n: "–", u: "", frac: null };
   const dueKm = Number(o.km) + Number(o.everyKm);
   const leftKm = dueKm - Number(c.km);
   const dd = parseDate(o.date); dd.setMonth(dd.getMonth() + Number(o.everyMonths));
   const leftDays = Math.round((dd - today()) / DAY);
+  const totalDays = Math.max(1, Math.round((dd - parseDate(o.date)) / DAY));
   const warnKm = Math.max(1500, Number(o.everyKm) * 0.05);
   let s = "ok";
   if (leftKm < 0 || leftDays < 0) s = "bad"; else if (leftKm < warnKm || leftDays <= 30) s = "warn";
-  let txt;
-  if (leftKm < 0) txt = `${fmtKm(-leftKm)}-rel túllépve`;
-  else if (leftDays < 0) txt = `${-leftDays} napja esedékes`;
-  else if (leftDays <= 90 && leftDays * 40 < leftKm) txt = `${leftDays} nap múlva`;
-  else txt = `még ${fmtKm(leftKm)}`;
-  return { s, txt, d: Math.min(leftDays, Math.round(leftKm / 40)), date: iso(dd),
+  const dateFirst = leftDays * 40 < leftKm; // ha az idő jár le előbb (kb. 40 km/nap)
+  let txt, n, u;
+  if (leftKm < 0) { txt = `${fmtKm(-leftKm)}-rel túllépve`; n = kShort(-leftKm); u = kUnit(-leftKm) + " túl"; }
+  else if (leftDays < 0) { txt = `${-leftDays} napja esedékes`; n = -leftDays; u = "napja"; }
+  else if (dateFirst && leftDays <= 90) { txt = `${leftDays} nap múlva`; n = leftDays; u = "nap"; }
+  else { txt = `még ${fmtKm(leftKm)}`; n = kShort(leftKm); u = kUnit(leftKm); }
+  const frac = Math.max(0, Math.min(leftKm / Number(o.everyKm), leftDays / totalDays));
+  return { s, txt, n, u, frac, d: Math.min(leftDays, Math.round(leftKm / 40)), date: iso(dd),
     sub: `${fmtKm(dueKm)}-nél vagy ${fmtDate(iso(dd))}-ig` };
 }
+function kShort(km) { return km >= 1000 ? (km / 1000).toLocaleString("hu-HU", { maximumFractionDigits: km < 10000 ? 1 : 0 }) : String(km); }
+const kUnit = km => km >= 1000 ? "ezer km" : "km";
 function items(c) {
   const list = DOC_TYPES.map(([k, t, sub]) => ({ k, t, sub: c.notes[k] || sub, date: c.docs[k], ...dateStatus(c.docs[k]) }));
   for (const k of SERVICE_KEYS) {
     const o = serviceInfo(c, k);
-    list.push({ k, t: SERVICES[k].t, sub: o.sub, date: o.date, s: o.s, txt: o.txt, d: o.d, noDate: true });
+    list.push({ ...o, k, t: SERVICES[k].t, service: true });
   }
   c.custom.forEach(x => list.push({ k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
   return list;
 }
 const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
+const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
+const shortDate = s => parseDate(s).toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
+function sinceText(s) {
+  if (!s) return "";
+  const d = Math.round((today() - parseDate(s)) / DAY);
+  return d <= 0 ? "Frissítve: ma" : d === 1 ? "Frissítve: tegnap" : `Frissítve: ${d} napja`;
+}
 
 /* ---------- megjelenítés ---------- */
 const ICONS = {
@@ -113,24 +124,9 @@ function render() {
   else if (!c) h = renderWelcome();
   else {
     const list = items(c);
-    const n = { bad: 0, warn: 0, ok: 0 };
-    list.forEach(i => { if (i.s in n) n[i.s]++; });
-    h += `<div class="top"><h1>Garázs napló</h1>
+    h += plates(c);
+    h += `<div class="carname"><div><h1>${esc(c.model || c.name)}</h1><p class="hint">${esc(c.name)}${c.year ? ", " + esc(c.year) : ""}</p></div>
       <button class="iconbtn" data-act="editcar" aria-label="Autó adatainak szerkesztése"><svg viewBox="0 0 24 24">${ICONS.edit}</svg></button></div>`;
-    h += carChips(c);
-    h += `<div class="card hero">
-      <div class="row">
-        <div><h2>${esc(c.model || c.name)}</h2><div class="hint">${c.year ? esc(c.year) + " · " : ""}${esc(c.name)}</div></div>
-        ${c.plate ? `<span class="plate"><span class="eu">RO</span><span class="nr">${esc(c.plate)}</span></span>` : ""}
-      </div>
-      <div class="row">
-        <div><div class="label">Km-óra állás</div><div class="big num">${fmtKm(c.km)}</div></div>
-        <button class="btn" data-act="km">Km frissítése</button>
-      </div></div>`;
-    h += `<div class="summary">
-      ${n.bad ? `<span class="pill s-bad">${n.bad} lejárt</span>` : ""}
-      ${n.warn ? `<span class="pill s-warn">${n.warn} hamarosan lejár</span>` : ""}
-      <span class="pill s-ok">${n.ok} rendben</span></div>`;
     if (tab === "home") h += renderHome(c, list);
     if (tab === "docs") h += renderDocs(c, list);
     if (tab === "log") h += renderLog(c);
@@ -141,52 +137,89 @@ function render() {
     `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${l}</button>`).join("");
 }
 
-function carChips(c) {
-  return `<div class="cars">${S.cars.map(x => {
+function plateHtml(x) {
+  return `<span class="eu">RO</span><span class="nr">${esc(x.plate || x.name)}</span>`;
+}
+function plates(c) {
+  return `<div class="plates">${S.cars.map(x => {
     const bad = items(x).some(i => i.s === "bad");
-    return `<button class="chip" aria-pressed="${x.id === c?.id}" data-car="${x.id}">${esc(x.name)}${bad ? '<span class="dot" aria-label="lejárt tétel"></span>' : ""}</button>`;
-  }).join("")}<button class="chip add" data-act="addcar">+ Új autó</button></div>`;
+    return `<button class="plate" aria-pressed="${x.id === c?.id}" data-car="${x.id}" aria-label="${esc(x.name)}${bad ? ", lejárt tétel" : ""}">${plateHtml(x)}${bad ? '<span class="dot"></span>' : ""}</button>`;
+  }).join("")}<button class="plate add" data-act="addcar">+ autó</button></div>`;
 }
 
-const itemHtml = i => `<button class="item" data-edit="${esc(i.k)}">
-  <span class="bar s-${i.s}"></span>
-  <span><div class="t">${esc(i.t)}</div><div class="sub">${esc(i.sub)}</div></span>
-  <span class="right"><div class="c-${i.s} num">${i.txt}</div><div class="hint num">${i.noDate ? "" : fmtDate(i.date)}</div></span>
+function odometer(c) {
+  const s = String(Math.max(0, Math.round(c.km)));
+  const digits = s.padStart(Math.max(6, s.length), "0").split("");
+  return `<button class="odo" data-act="km" aria-label="Km-óra: ${fmtKm(c.km)}. Koppints a frissítéshez.">
+    <span class="drums" aria-hidden="true">${digits.map((d, i) => `<span class="drum${i === digits.length - 1 ? " last" : ""}">${d}</span>`).join("")}<span class="unit">km</span></span>
+    <span class="odo-row"><span>${sinceText(c.kmDate)}</span><span class="btn">Km frissítése</span></span>
+  </button>`;
+}
+
+const rowHtml = i => `<button class="r" data-edit="${esc(i.k)}">
+  <span class="n ${i.s}">${i.n}<small>${i.u}</small></span>
+  <span class="rt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.s === "none" ? i.sub : i.service ? i.sub : (i.s === "bad" ? "lejárt " : "") + fmtDate(i.date) + (i.sub ? ", " + i.sub : ""))}</span></span>
 </button>`;
 
+function gaugeHtml(i) {
+  if (i.s === "none") return `<button class="gauge" data-edit="${i.k}"><span class="gtop"><b>${esc(i.t)}</b><span class="hint">nincs megadva</span></span><span class="s">${esc(i.sub)}</span></button>`;
+  return `<button class="gauge" data-edit="${i.k}">
+    <span class="gtop"><b>${esc(i.t)}</b><span class="c-${i.s} num">${esc(i.txt)}</span></span>
+    <span class="track"><span class="fill ${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></span></span>
+    <span class="s">${esc(i.sub)}</span></button>`;
+}
+
 function entryHtml(e) {
-  return `<button class="entry" data-entry="${e.id}"><span class="date num">${fmtDate(e.date)}</span>
-    <span><div style="font-weight:600">${esc(e.title)}</div><div class="hint num">${fmtKm(e.km)}${e.place ? " · " + esc(e.place) : ""}</div></span>
-    <span class="cost num">${e.cost ? fmtMoney(e.cost) : ""}</span></button>`;
+  return `<button class="svc" data-entry="${e.id}">
+    <span class="svc-main"><span class="t">${esc(e.title)}</span>
+    <span class="s num">${fmtDate(e.date)}, ${fmtKm(e.km)}${e.cost ? ` <b class="cost">${fmtMoney(e.cost)}</b>` : ""}</span></span>
+    ${e.place ? `<span class="stamp" aria-label="Szerviz: ${esc(e.place)}">${esc(e.place.toUpperCase())}</span>` : ""}
+  </button>`;
 }
 
 function renderWelcome() {
-  return `<div class="top"><h1>Garázs napló</h1></div>
-  <div class="card welcome">
-    <h2>Add hozzá az első autót</h2>
+  return `<div class="welcome">
+    <span class="plate big" aria-hidden="true"><span class="eu">RO</span><span class="nr">CJ 00 NEW</span></span>
+    <h1>Add hozzá az első autót</h1>
     <p class="hint">Utána beírhatod az RCA, rovinieta, ITP és a többi lejáratot, és bejegyezheted a szervizeket. Minden adat csak ezen a telefonon tárolódik.</p>
-    <button class="btn" data-act="addcar">+ Új autó</button>
+    <button class="btn" data-act="addcar">Autó hozzáadása</button>
   </div>`;
 }
 
 function renderHome(c, list) {
   const urgent = list.filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
-  const missing = list.filter(i => i.s === "none" && !["casco", "timing"].includes(i.k));
-  let h = `<div class="section"><h2>Teendők</h2><div class="card list">${urgent.length ? urgent.map(itemHtml).join("")
-    : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`}</div></div>`;
-  if (missing.length) h += `<div class="section"><h2>Még nincs megadva</h2><div class="card list">${missing.map(itemHtml).join("")}</div></div>`;
+  const missing = list.filter(i => i.s === "none" && !i.service);
+  const services = list.filter(i => i.service);
+  let h = odometer(c);
+  h += `<section class="section"><h2 class="h">Teendők <small>${urgent.length ? urgent.length + " tétel" : ""}</small></h2>
+    <div class="rows">${urgent.length ? urgent.map(rowHtml).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`}</div></section>`;
+  h += `<section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${services.map(gaugeHtml).join("")}</div></section>`;
+  if (missing.length) h += `<section class="section"><h2 class="h">Még nincs megadva</h2><div class="rows">${missing.map(rowHtml).join("")}</div></section>`;
   const last = [...c.log].sort((a, b) => b.date.localeCompare(a.date))[0];
-  h += `<div class="section"><div class="row"><h2>Utolsó szerviz</h2><button class="btn ghost" data-tab="log">Szervizkönyv</button></div>
-    <div class="card list">${last ? entryHtml(last) : `<div class="empty">Még nincs bejegyzés.</div>`}</div></div>`;
+  h += `<section class="section"><h2 class="h">Utolsó szerviz <button class="link" data-tab="log">Szervizkönyv</button></h2>
+    <div class="rows">${last ? entryHtml(last) : `<div class="empty">Még nincs bejegyzés.</div>`}</div></section>`;
   return h;
 }
 
 function renderDocs(c, list) {
-  return `<div class="section"><h2>Lejáratok</h2>
-    <div class="card list">${[...list].sort(byUrgency).map(itemHtml).join("")}</div>
-    <button class="btn ghost wide" data-act="addcustom">+ Saját emlékeztető (pl. gumicsere, vezérlés)</button>
-    <button class="btn wide" data-act="calcar">Lejáratok hozzáadása a Naptárhoz</button>
-    <p class="hint">A Naptárba került eseménynél az iPhone ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></div>`;
+  const dated = list.filter(i => !i.service && i.date).sort((a, b) => a.date.localeCompare(b.date));
+  const undated = list.filter(i => !i.service && !i.date);
+  let tl = "", month = "";
+  for (const i of dated) {
+    const m = monthLabel(i.date);
+    if (m !== month) { tl += `<div class="m">${m}</div>`; month = m; }
+    tl += `<button class="ev ${i.s}" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span>
+      <span class="d num">${i.s === "bad" ? "lejárt<br>" + shortDate(i.date) : shortDate(i.date)}</span></button>`;
+  }
+  if (undated.length) {
+    tl += `<div class="m">Nincs megadva</div>` + undated.map(i => `<button class="ev none" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span><span class="d">–</span></button>`).join("");
+  }
+  return `<section class="section"><h2 class="h">Lejáratok <small>${esc(c.plate || "")}</small></h2>
+    <div class="rows tlbox"><div class="tl">${tl}</div></div>
+    <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
+    <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
+    <p class="hint">A Naptárba került eseménynél az iPhone ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
+    <section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(gaugeHtml).join("")}</div></section>`;
 }
 
 function renderLog(c) {
@@ -194,10 +227,10 @@ function renderLog(c) {
   const year = String(today().getFullYear());
   const totalYear = list.filter(e => e.date.startsWith(year)).reduce((s, e) => s + Number(e.cost || 0), 0);
   const total = list.reduce((s, e) => s + Number(e.cost || 0), 0);
-  return `<div class="section"><div class="row"><h2>Szervizkönyv</h2><button class="btn" data-act="addlog">+ Bejegyzés</button></div>
-    <div class="card list">${list.length ? list.map(entryHtml).join("")
-      : `<div class="empty">Még nincs bejegyzés. A következő szerviz után add hozzá a „+ Bejegyzés” gombbal.</div>`}</div>
-    ${list.length ? `<p class="hint num">${year}-ban: ${fmtMoney(totalYear)} · összesen: ${fmtMoney(total)} (${list.length} bejegyzés)</p>` : ""}</div>`;
+  return `<section class="section"><h2 class="h">Szervizkönyv <button class="btn" data-act="addlog">Új bejegyzés</button></h2>
+    <div class="rows">${list.length ? list.map(entryHtml).join("")
+      : `<div class="empty">Még nincs bejegyzés. A következő szerviz után add hozzá az „Új bejegyzés” gombbal.</div>`}</div>
+    ${list.length ? `<div class="sum num"><span>${year}-ban ${fmtMoney(totalYear)}</span><span>Összesen ${fmtMoney(total)}, ${list.length} bejegyzés</span></div>` : ""}</section>`;
 }
 
 function remindText() {
@@ -207,19 +240,19 @@ function remindText() {
 
 function renderSettings() {
   const r = S.settings.remind;
-  return `<div class="top"><h1>Beállítások</h1></div>
+  return `<h1 class="pagetitle">Beállítások</h1>
   <div class="settings" style="display:grid;gap:18px">
     <div class="section" style="margin-top:0"><h2>Emlékeztetők</h2><div class="card">
       <p class="hint">Hány nappal a lejárat előtt szóljon a Naptár (reggel 9-kor):</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">${REMIND_OPTIONS.map(d =>
-        `<button class="chip" aria-pressed="${r.includes(d)}" data-remind="${d}">${d} nap</button>`).join("")}</div>
+        `<button class="toggle" aria-pressed="${r.includes(d)}" data-remind="${d}">${d} nap</button>`).join("")}</div>
       <button class="btn" data-act="calall" ${S.cars.length ? "" : "disabled"}>Összes autó lejáratai a Naptárba</button>
       <p class="hint">Ezt elég egyszer megcsinálni, és utána akkor, ha valamelyik dátum megváltozik.</p>
     </div></div>
     <div class="section" style="margin-top:0"><h2>Mentés</h2><div class="card">
       <p class="hint">Az adatok csak ezen a telefonon vannak. Néha ments egy másolatot a Fájlokba vagy az iCloud Drive-ra, hogy telefoncsere után se vesszen el semmi.</p>
       <button class="btn" data-act="export" ${S.cars.length ? "" : "disabled"}>Biztonsági mentés készítése</button>
-      <button class="btn ghost" data-act="import">Visszaállítás mentésből</button>
+      <button class="btn quiet" data-act="import">Visszaállítás mentésből</button>
       ${S.lastBackup ? `<p class="hint">Utolsó mentés: ${fmtDate(S.lastBackup)}</p>` : ""}
     </div></div>
     <p class="hint">Garázs napló ${APP_VERSION}</p>
@@ -266,7 +299,7 @@ function carForm(c) {
       const data = { name: f.name.trim(), plate: f.plate.trim().toUpperCase(), year: f.year, model: f.model.trim(), km: Number(f.km) };
       if (isNew) {
         const id = uid();
-        S.cars.push({ id, ...data, docs: {}, notes: {}, log: [], custom: [],
+        S.cars.push({ id, ...data, kmDate: iso(today()), docs: {}, notes: {}, log: [], custom: [],
           ...Object.fromEntries(SERVICE_KEYS.map(k => [k, { date: "", km: data.km, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths }])) });
         S.sel = id; tab = "docs";
         toast("Autó hozzáadva. Most add meg a lejáratokat.");
@@ -333,7 +366,7 @@ function logForm(c, e) {
     f => {
       const data = { date: f.date, km: Number(f.km), title: f.title.trim(), place: f.place.trim(), cost: f.cost ? Number(f.cost) : 0 };
       if (isNew) c.log.push({ id: uid(), ...data }); else Object.assign(e, data);
-      if (data.km > c.km) c.km = data.km;
+      if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
       for (const k of SERVICE_KEYS) if (f["is-" + k]) c[k] = { ...c[k], date: data.date, km: data.km };
     },
     isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
@@ -471,7 +504,7 @@ document.addEventListener("click", e => {
     case "editcar": carForm(c); break;
     case "km": sheet(`<h2>Km-óra állás</h2><p class="hint">${esc(c.name)} · eddig ${fmtKm(c.km)}</p>
       ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}`,
-      f => { c.km = Number(f.km); toast("Km-állás frissítve."); }); break;
+      f => { c.km = Number(f.km); c.kmDate = iso(today()); toast("Km-állás frissítve."); }); break;
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c]); break;

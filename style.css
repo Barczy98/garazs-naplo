@@ -1,100 +1,171 @@
-/* Rendszer betűtípusok: offline is működik, nincs külső letöltés */
+/* Garázs napló 1.2
+   Elrendezés: egy oszlop telefonszélességben; fent a rendszámtábla-autóváltó,
+   alatta a km-óra mint az egyetlen hangos elem, minden más csendes lista. */
+@font-face{font-family:"Archivo";font-style:normal;font-display:swap;font-weight:100 900;font-stretch:62% 125%;
+  src:url(fonts/archivo-latin-wdth-normal.woff2) format("woff2-variations"),url(fonts/archivo-latin-wdth-normal.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Archivo";font-style:normal;font-display:swap;font-weight:100 900;font-stretch:62% 125%;
+  src:url(fonts/archivo-latin-ext-wdth-normal.woff2) format("woff2-variations"),url(fonts/archivo-latin-ext-wdth-normal.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
 :root{
-  --bg:#eef1f4; --surface:#ffffff; --fg:#17202b; --muted:#5d6b7a; --line:#d8dee5;
-  --accent:#1f5fae; --accent-fg:#ffffff;
-  --ok:#1e7a46; --ok-bg:#e1f2e8; --warn:#a85a00; --warn-bg:#fdefd9; --bad:#b3261e; --bad-bg:#fbe3e1;
-  --plate:#003399;
-  --display:"SF Pro Display","Arial Narrow",system-ui,-apple-system,sans-serif;
-  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --paper:#e9eee8;   /* a forgalmi engedély (talon) papírja */
+  --card:#fafbf8;
+  --ink:#18222b;
+  --muted:#5b6862;
+  --rule:#d2dad1;
+  --signal:#f0a800;  /* jelzősárga */
+  --signal-ink:#1b1400;
+  --drum:#141a1f; --drum-fg:#f4f6f2; --drum-muted:#b9c3be;
+  --bad:#c0261d; --bad-bg:#f8e1de; --warn:#9a5b00; --warn-bg:#fbecd0; --ok:#24704a; --ok-bg:#dcefe3;
+  --plate:#0a3a9e; --stamp:#0a3a9e;
+  --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root{
-  --bg:#10151b; --surface:#19212a; --fg:#e8edf2; --muted:#93a1b0; --line:#2a3541;
-  --accent:#6aa5ee; --accent-fg:#0c1724;
-  --ok:#6fd39a; --ok-bg:#16301f; --warn:#f2b45c; --warn-bg:#3a2a12; --bad:#ff8a80; --bad-bg:#3d1916;
+  --paper:#111613; --card:#192019; --ink:#e7ece6; --muted:#97a39c; --rule:#2a332c;
+  --signal:#f5b82e; --drum:#060908;
+  --bad:#ff8b80; --bad-bg:#3b1915; --warn:#f2b45c; --warn-bg:#382a12; --ok:#79d3a0; --ok-bg:#15301f;
+  --stamp:#8fb0ff;
   color-scheme:dark}}
+
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;min-height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%}
-.app{max-width:520px;margin:0 auto;
+body{background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+.app{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
-  padding-top:calc(8px + env(safe-area-inset-top,0px));padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
-h1,h2{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance}
-h1{font-size:28px;letter-spacing:-.01em} h2{font-size:20px}
+  padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+h1,h2{margin:0;text-wrap:balance}
+h1{font-size:27px;font-stretch:78%;font-weight:800;letter-spacing:-.01em;line-height:1.1}
 p{margin:0}
-.label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
 .num{font-variant-numeric:tabular-nums}
-.hint{font-size:13px;color:var(--muted)}
-button{font:inherit;color:inherit;cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
-.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-block:8px 12px}
-.iconbtn{background:var(--surface);border:1px solid var(--line);border-radius:10px;width:40px;height:40px;display:grid;place-items:center}
-.iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
-.cars{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
-.cars::-webkit-scrollbar{display:none}
-.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:600}
-.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
-.chip.add{border-style:dashed;color:var(--muted)}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bad);margin-left:6px;vertical-align:middle}
-
-.card{background:var(--surface);border:1px solid var(--line);border-radius:14px}
-.hero{margin-top:14px;padding:16px;display:grid;gap:12px}
-.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.row > div{min-width:0}
-.plate{display:inline-flex;align-items:stretch;border:2px solid #222;border-radius:5px;overflow:hidden;background:#fff;color:#111;font-weight:700;font-size:19px;letter-spacing:.06em}
-.plate .eu{background:var(--plate);color:#fff;font-size:10px;display:flex;align-items:flex-end;padding:2px 5px;letter-spacing:0}
-.plate .nr{padding:2px 9px}
-.big{font-family:var(--display);font-size:26px;font-weight:700}
-.btn{border:none;background:var(--accent);color:var(--accent-fg);border-radius:10px;padding:10px 14px;font-weight:600}
-.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
-.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--line)}
-.btn.wide{width:100%}
-
-.summary{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.pill{border-radius:999px;padding:4px 10px;font-size:13px;font-weight:600}
-.s-bad{background:var(--bad-bg);color:var(--bad)} .s-warn{background:var(--warn-bg);color:var(--warn)} .s-ok{background:var(--ok-bg);color:var(--ok)}
-
-.section{margin-top:22px;display:grid;gap:10px}
-.list{overflow:hidden}
-.item{display:grid;grid-template-columns:5px 1fr auto;gap:12px;align-items:center;padding:12px 14px 12px 0;border:0;border-top:1px solid var(--line);width:100%;text-align:left;background:none}
-.item:first-child{border-top:none}
-.item > span{min-width:0}
-.item .bar{align-self:stretch;border-radius:0 3px 3px 0}
-.bar.s-bad{background:var(--bad)} .bar.s-warn{background:var(--warn)} .bar.s-ok{background:var(--ok)} .bar.s-none{background:var(--line)}
-.item .t{font-weight:600}
-.item .sub{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
-.item .right{text-align:right;font-size:14px;white-space:nowrap}
+.hint{font-size:14px;color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer;text-align:left}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 .c-bad{color:var(--bad)} .c-warn{color:var(--warn)} .c-ok{color:var(--ok)} .c-none{color:var(--muted)}
 
-.entry{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px 14px;border:0;border-top:1px solid var(--line);width:100%;text-align:left;background:none}
-.entry:first-child{border-top:none}
-.entry > span{min-width:0}
-.entry .date{color:var(--muted);font-size:14px;min-width:80px}
-.entry .cost{font-weight:600;white-space:nowrap}
-.empty{padding:22px 16px;color:var(--muted);text-align:center;display:grid;gap:12px;justify-items:center}
+/* rendszámtábla-autóváltó */
+.plates{display:flex;gap:10px;overflow-x:auto;padding:3px 3px 4px;margin:0 -3px;scrollbar-width:none}
+.plates::-webkit-scrollbar{display:none}
+.plate{flex:none;position:relative;display:inline-flex;align-items:stretch;border:1.5px solid #18222b;border-radius:5px;background:#fff;color:#111;
+  font-weight:700;font-stretch:90%;font-size:15px;letter-spacing:.05em;padding:0;opacity:.5}
+.plate .eu{background:var(--plate);color:#fff;font-size:8px;display:flex;align-items:flex-end;padding:1px 3px 2px;letter-spacing:0;border-radius:3px 0 0 3px}
+.plate .nr{padding:4px 8px;white-space:nowrap}
+.plate[aria-pressed="true"]{opacity:1;outline:2px solid var(--signal);outline-offset:2px}
+.plate.add{background:transparent;color:var(--muted);border:1.5px dashed var(--muted);padding:4px 10px;opacity:1;letter-spacing:0}
+.plate .dot{position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:50%;background:var(--bad);border:2px solid var(--paper)}
+.plate.big{font-size:26px;opacity:1}
+.plate.big .eu{font-size:11px;padding:2px 5px 3px}
+.plate.big .nr{padding:4px 14px}
 
-.welcome{margin-top:40px;padding:24px 20px;display:grid;gap:14px;text-align:center;justify-items:center}
+.carname{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.carname > div{min-width:0}
+.iconbtn{flex:none;background:var(--card);border:1px solid var(--rule);border-radius:10px;width:40px;height:40px;display:grid;place-items:center}
+.iconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8}
 
-.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
-  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);z-index:5}
+/* km-óra */
+.odo{display:grid;gap:12px;background:var(--drum);color:var(--drum-fg);border:0;border-radius:14px;padding:14px 14px 12px;width:100%}
+.drums{display:flex;gap:3px}
+.drum{flex:1;min-width:0;text-align:center;border-radius:4px;font-size:clamp(28px,9vw,40px);font-weight:700;font-stretch:70%;line-height:1.35;
+  background:linear-gradient(#2b333a,#0d1114 22%,#0d1114 78%,#2b333a);color:var(--drum-fg)}
+.drum.last{background:linear-gradient(#ffd25e,#f0a800 22%,#f0a800 78%,#c98a00);color:#1b1400}
+.unit{align-self:flex-end;font-size:13px;font-weight:600;color:var(--drum-muted);padding-left:6px}
+.odo-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;color:var(--drum-muted)}
+
+.btn{display:inline-block;border:none;background:var(--signal);color:var(--signal-ink);border-radius:10px;padding:10px 14px;font-weight:700;font-size:15px;text-align:center}
+.btn.quiet,.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+.btn.danger{background:transparent;color:var(--bad);border:1px solid var(--rule)}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45}
+.link{background:none;border:0;padding:0;color:var(--muted);font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+
+.section{display:grid;gap:10px;margin-top:6px}
+.h{font-size:19px;font-stretch:85%;font-weight:750;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.h small{font-weight:500;font-size:14px;color:var(--muted);font-stretch:100%}
+.h .btn{font-stretch:100%}
+.rows{background:var(--card);border:1px solid var(--rule);border-radius:14px;overflow:hidden}
+.empty{padding:20px 16px;color:var(--muted);text-align:center}
+
+/* teendő sorok: a nagy szám a lényeg */
+.r{display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:center;width:100%;padding:11px 14px 11px 10px;border:0;border-top:1px solid var(--rule);background:none}
+.r:first-child{border-top:0}
+.n{text-align:center;border-radius:9px;padding:6px 0 5px;font-weight:800;font-stretch:72%;font-size:23px;line-height:1;font-variant-numeric:tabular-nums}
+.n small{display:block;font-size:10.5px;font-weight:600;font-stretch:100%;margin-top:2px}
+.n.bad{background:var(--bad-bg);color:var(--bad)} .n.warn{background:var(--warn-bg);color:var(--warn)} .n.ok{background:var(--ok-bg);color:var(--ok)}
+.n.none{color:var(--muted);border:1.5px dashed var(--rule)}
+.rt,.evt,.svc-main{display:grid;min-width:0}
+.t{font-weight:650}
+.s{font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}
+
+/* karbantartás csík */
+.gauge{display:grid;gap:6px;width:100%;padding:12px 14px;border:0;border-top:1px solid var(--rule);background:none}
+.gauge:first-child{border-top:0}
+.gtop{display:flex;justify-content:space-between;gap:8px;font-size:15px}
+.gtop b{font-weight:650}
+.track{height:8px;border-radius:4px;background:var(--rule);overflow:hidden}
+.fill{display:block;height:100%;border-radius:4px}
+.fill.ok{background:var(--ok)} .fill.warn{background:var(--signal)} .fill.bad{background:var(--bad)}
+
+/* lejáratok idővonalon */
+.tlbox{padding:14px 14px 8px}
+.tl{display:grid;position:relative;padding-left:18px}
+.tl::before{content:"";position:absolute;left:5px;top:8px;bottom:12px;width:2px;background:var(--rule)}
+.m{font-size:13px;font-weight:700;color:var(--muted);font-stretch:85%;padding:12px 0 2px}
+.m:first-child{padding-top:0}
+.ev{position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;width:100%;padding:8px 0;border:0;background:none}
+.ev::before{content:"";position:absolute;left:-17px;top:13px;width:10px;height:10px;border-radius:50%;background:var(--card);border:2px solid var(--muted)}
+.ev.bad::before{background:var(--bad);border-color:var(--bad)}
+.ev.warn::before{background:var(--signal);border-color:var(--signal)}
+.ev.ok::before{border-color:var(--ok)}
+.ev.none::before{border-style:dashed}
+.ev .d{flex:none;text-align:right;font-size:14px;color:var(--muted);line-height:1.3;padding-top:2px}
+.ev.bad .d{color:var(--bad);font-weight:700} .ev.warn .d{color:var(--warn);font-weight:700}
+
+/* szervizkönyv pecséttel */
+.svc{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:13px 14px;border:0;border-top:1px solid var(--rule);background:none}
+.svc:first-child{border-top:0}
+.cost{color:var(--ink);font-weight:700;margin-left:6px}
+.stamp{flex:none;width:64px;height:64px;border-radius:50%;border:2px solid var(--stamp);color:var(--stamp);display:grid;place-items:center;text-align:center;
+  font-size:8.5px;font-weight:800;line-height:1.1;font-stretch:65%;padding:8px;transform:rotate(-12deg);opacity:.85;overflow:hidden;overflow-wrap:anywhere}
+.sum{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--muted);padding:0 4px}
+
+.welcome{margin-top:12vh;display:grid;gap:16px;justify-items:center;text-align:center}
+.welcome .hint{max-width:34ch}
+
+/* beállítások */
+.pagetitle{padding-top:4px}
+.settings{display:grid;gap:18px}
+.settings .section{margin:0}
+.settings h2{font-size:19px;font-stretch:85%;font-weight:750}
+.settings .card{padding:14px;display:grid;gap:10px}
+.toggle{border:1px solid var(--rule);background:var(--card);border-radius:999px;padding:7px 13px;font-weight:600;font-size:14px}
+.toggle[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* alsó menü */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--rule);z-index:5;
+  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tabs-in{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
-.tab{background:none;border:none;padding:9px 2px 10px;font-size:12px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+.tab{background:none;border:none;padding:9px 2px 8px;font-size:11.5px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px}
 .tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
-.tab[aria-selected="true"]{color:var(--accent)}
+.tab::after{content:"";width:18px;height:3px;border-radius:2px;background:transparent;margin-top:2px}
+.tab[aria-selected="true"]{color:var(--ink)}
+.tab[aria-selected="true"]::after{background:var(--signal)}
 
+/* űrlap lapok */
 .sheet-bg{position:fixed;inset:0;background:rgba(10,15,20,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
-.sheet{background:var(--surface);width:100%;max-width:520px;border-radius:16px 16px 0 0;
+.sheet{background:var(--card);width:100%;max-width:520px;border-radius:18px 18px 0 0;
   padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   display:grid;gap:12px;max-height:92vh;overflow:auto}
+.sheet h2{font-size:23px;font-stretch:80%;font-weight:800}
 .field{display:grid;gap:4px;min-width:0}
-.field input,.field select,.field textarea{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0}
+.label{font-size:13.5px;color:var(--muted);font-weight:600}
+.field input,.field select{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);width:100%;min-width:0}
 .field input[type="date"]{-webkit-appearance:none;appearance:none;min-height:44px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .check{display:flex;gap:10px;align-items:center}
-.check input{width:20px;height:20px}
+.check input{width:20px;height:20px;accent-color:var(--signal)}
 .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}
 .actions .spacer{flex:1}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:90vw}
-.settings .card{padding:14px;display:grid;gap:10px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:14px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:90vw}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
