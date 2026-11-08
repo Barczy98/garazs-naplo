@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -7,8 +7,6 @@ const DOC_TYPES = [
   ["rca", "RCA biztosítás", "kötelező felelősségbiztosítás"],
   ["rov", "Rovinieta", "úthasználati díj"],
   ["itp", "ITP", "műszaki vizsga"],
-  ["trusa", "Elsősegélycsomag", "trusă medicală, kötelező"],
-  ["ext", "Tűzoltó készülék", "extinctor, kötelező"],
   ["tax", "Gépjárműadó", "impozit auto"],
 ];
 // km vagy idő alapú karbantartás: amelyik előbb jön
