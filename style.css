@@ -162,6 +162,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .field input,.field select{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);width:100%;min-width:0}
 .field input[type="date"]{-webkit-appearance:none;appearance:none;min-height:44px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--paper);border:1px solid var(--rule);border-radius:11px;padding:3px}
+.seg label{position:relative}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:block;text-align:center;padding:8px 6px;border-radius:8px;font-weight:600;font-size:15px;color:var(--muted)}
+.seg input:checked + span{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg input:focus-visible + span{outline:2px solid var(--signal);outline-offset:1px}
 .check{display:flex;gap:10px;align-items:center}
 .check input{width:20px;height:20px;accent-color:var(--signal)}
 .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:4px}

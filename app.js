@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.3.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -85,6 +85,16 @@ function serviceInfo(c, key) {
   return { s, txt, n, u, frac, d: Math.min(leftDays, Math.round(leftKm / 40)), date: iso(dd),
     sub: `${fmtKm(dueKm)}-nél vagy ${fmtDate(iso(dd))}-ig` };
 }
+// km-állás alapú saját emlékeztető (pl. 200 000 km-nél fékfolyadék)
+function kmStatus(c, x) {
+  const target = Number(x.km), left = target - Number(c.km);
+  const span = Math.max(1, target - Number(x.startKm ?? c.km));
+  const warnKm = Math.max(1000, span * 0.05);
+  const s = left < 0 ? "bad" : left < warnKm ? "warn" : "ok";
+  const sub = `${fmtKm(target)}-nél` + (x.note ? `, ${x.note}` : "");
+  if (left < 0) return { s, sub, txt: `${fmtKm(-left)}-rel túllépve`, n: kShort(-left), u: kUnit(-left) + " túl", d: Math.round(left / 40), frac: 0, date: "" };
+  return { s, sub, txt: `még ${fmtKm(left)}`, n: kShort(left), u: kUnit(left), d: Math.round(left / 40), frac: Math.min(1, left / span), date: "" };
+}
 function kShort(km) { return km >= 1000 ? (km / 1000).toLocaleString("hu-HU", { maximumFractionDigits: km < 10000 ? 1 : 0 }) : String(km); }
 const kUnit = km => km >= 1000 ? "ezer km" : "km";
 function items(c) {
@@ -93,7 +103,8 @@ function items(c) {
     const o = serviceInfo(c, k);
     list.push({ ...o, k, t: SERVICES[k].t, service: true });
   }
-  c.custom.forEach(x => list.push({ k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
+  c.custom.forEach(x => list.push(x.mode === "km" ? { k: "c:" + x.id, t: x.title, ...kmStatus(c, x), service: true }
+    : { k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
   return list;
 }
 const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
@@ -163,7 +174,7 @@ function gaugeHtml(i) {
   if (i.s === "none") return `<button class="gauge" data-edit="${i.k}"><span class="gtop"><b>${esc(i.t)}</b><span class="hint">nincs megadva</span></span><span class="s">${esc(i.sub)}</span></button>`;
   return `<button class="gauge" data-edit="${i.k}">
     <span class="gtop"><b>${esc(i.t)}</b><span class="c-${i.s} num">${esc(i.txt)}</span></span>
-    <span class="track"><span class="fill ${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></span></span>
+    ${i.frac == null ? "" : `<span class="track"><span class="fill ${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></span></span>`}
     <span class="s">${esc(i.sub)}</span></button>`;
 }
 
@@ -339,18 +350,41 @@ function docForm(c, k) {
 
 function customForm(c, x) {
   const isNew = !x; x = x || {};
+  const mode = x.mode === "km" ? "km" : "date";
   const form = sheet(`<h2>${isNew ? "Saját emlékeztető" : esc(x.title)}</h2>
     ${field("title", "Megnevezés", `required value="${v(x.title)}" placeholder="pl. Nyári gumi felrakása"`)}
-    ${field("date", "Dátum", `type="date" required value="${v(x.date)}"`)}
+    <div class="field"><span class="label">Mikor figyelmeztessen?</span>
+      <div class="seg" role="radiogroup">
+        <label><input type="radio" name="mode" value="date" ${mode === "date" ? "checked" : ""}><span>Dátum szerint</span></label>
+        <label><input type="radio" name="mode" value="km" ${mode === "km" ? "checked" : ""}><span>Km-állás szerint</span></label>
+      </div></div>
+    <div data-mode="date">${field("date", "Dátum", `type="date" value="${v(x.date)}"`)}</div>
+    <div data-mode="km">${field("km", "Ennél a km-állásnál", `type="number" inputmode="numeric" min="0" value="${v(x.km)}" placeholder="pl. ${Math.ceil((Number(c.km) + 10000) / 1000) * 1000}"`)}
+      <p class="hint" style="margin-top:4px">Most ${fmtKm(c.km)}. Ha már csak kevés van hátra, narancssárgára vált.</p></div>
     ${field("note", "Megjegyzés", `value="${v(x.note)}"`)}`,
     f => {
-      const data = { title: f.title.trim(), date: f.date, note: f.note.trim() };
+      const data = { title: f.title.trim(), mode: f.mode, note: f.note.trim() };
+      if (f.mode === "km") {
+        if (!f.km) { toast("Add meg, hány km-nél figyelmeztessen."); return false; }
+        data.km = Number(f.km); data.date = "";
+        if (isNew || x.mode !== "km" || Number(x.km) !== data.km) data.startKm = Number(c.km);
+      } else {
+        if (!f.date) { toast("Add meg a dátumot."); return false; }
+        data.date = f.date; delete x.km;
+      }
       if (isNew) c.custom.push({ id: uid(), ...data }); else Object.assign(x, data);
     },
-    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button><button type="button" class="btn ghost" data-cal>Naptárba</button>`);
+    isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>${mode === "date" ? '<button type="button" class="btn ghost" data-cal>Naptárba</button>' : ""}`);
+  const sync = () => {
+    const m = form.querySelector('input[name="mode"]:checked').value;
+    form.querySelectorAll("[data-mode]").forEach(el => { el.hidden = el.dataset.mode !== m; });
+  };
+  form.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", sync));
+  sync();
   if (!isNew) {
     form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt az emlékeztetőt?", () => { c.custom = c.custom.filter(y => y.id !== x.id); });
-    form.querySelector("[data-cal]").onclick = () => exportCalendar([c], "c:" + x.id);
+    const cal = form.querySelector("[data-cal]");
+    if (cal) cal.onclick = () => exportCalendar([c], "c:" + x.id);
   }
 }
 
