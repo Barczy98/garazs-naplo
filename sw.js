@@ -1,6 +1,6 @@
 // Offline működés: az app fájljait a telefon eltárolja.
 // Új verzió kiadásakor a CACHE nevét növelni kell.
-const CACHE = "garazs-v1.0.0";
+const CACHE = "garazs-v1.1.0";
 const FILES = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 

@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -12,6 +12,14 @@ const DOC_TYPES = [
   ["ext", "Tűzoltó készülék", "extinctor, kötelező"],
   ["tax", "Gépjárműadó", "impozit auto"],
 ];
+// km vagy idő alapú karbantartás: amelyik előbb jön
+const SERVICES = {
+  oil: { t: "Olajcsere", everyKm: 15000, everyMonths: 12, logLabel: "Ez olajcsere volt",
+    hint: "Az utolsó olajcsere és az intervallum alapján számol." },
+  timing: { t: "Vezérműszíj", everyKm: 120000, everyMonths: 60, logLabel: "Ez vezérműszíj-csere volt",
+    hint: "Az utolsó vezérlés csere és a gyártói intervallum alapján számol (gyakran 90–150 ezer km vagy 5–6 év, nézd meg a szervizkönyvben). Láncos motornál hagyd üresen." },
+};
+const SERVICE_KEYS = Object.keys(SERVICES);
 const REMIND_OPTIONS = [60, 30, 14, 7, 3, 1];
 
 /* ---------- segédfüggvények ---------- */
@@ -33,7 +41,7 @@ function normalize(s) {
   s.settings = Object.assign(base.settings, s.settings || {});
   s.cars.forEach(c => {
     c.docs = c.docs || {}; c.notes = c.notes || {}; c.log = c.log || []; c.custom = c.custom || [];
-    c.oil = c.oil || { date: "", km: c.km || 0, everyKm: 15000, everyMonths: 12 };
+    for (const k of SERVICE_KEYS) c[k] = c[k] || { date: "", km: c.km || 0, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths };
   });
   if (!s.cars.some(c => c.id === s.sel)) s.sel = s.cars[0]?.id ?? null;
   return s;
@@ -59,26 +67,30 @@ function dateStatus(date) {
   if (days <= 30) return { s: "warn", txt: `${days} nap múlva`, d: days };
   return { s: "ok", txt: `${days} nap múlva`, d: days };
 }
-function oilInfo(c) {
-  const o = c.oil;
-  if (!o.date) return { s: "none", txt: "nincs megadva", d: 1e9, sub: "add meg az utolsó olajcserét", date: "" };
+function serviceInfo(c, key) {
+  const o = c[key];
+  if (!o.date) return { s: "none", txt: "nincs megadva", d: 1e9, sub: "add meg az utolsó cserét", date: "" };
   const dueKm = Number(o.km) + Number(o.everyKm);
   const leftKm = dueKm - Number(c.km);
   const dd = parseDate(o.date); dd.setMonth(dd.getMonth() + Number(o.everyMonths));
   const leftDays = Math.round((dd - today()) / DAY);
+  const warnKm = Math.max(1500, Number(o.everyKm) * 0.05);
   let s = "ok";
-  if (leftKm < 0 || leftDays < 0) s = "bad"; else if (leftKm < 1500 || leftDays <= 30) s = "warn";
+  if (leftKm < 0 || leftDays < 0) s = "bad"; else if (leftKm < warnKm || leftDays <= 30) s = "warn";
   let txt;
   if (leftKm < 0) txt = `${fmtKm(-leftKm)}-rel túllépve`;
   else if (leftDays < 0) txt = `${-leftDays} napja esedékes`;
+  else if (leftDays <= 90 && leftDays * 40 < leftKm) txt = `${leftDays} nap múlva`;
   else txt = `még ${fmtKm(leftKm)}`;
   return { s, txt, d: Math.min(leftDays, Math.round(leftKm / 40)), date: iso(dd),
     sub: `${fmtKm(dueKm)}-nél vagy ${fmtDate(iso(dd))}-ig` };
 }
 function items(c) {
   const list = DOC_TYPES.map(([k, t, sub]) => ({ k, t, sub: c.notes[k] || sub, date: c.docs[k], ...dateStatus(c.docs[k]) }));
-  const o = oilInfo(c);
-  list.push({ k: "oil", t: "Olajcsere", sub: o.sub, date: o.date, s: o.s, txt: o.txt, d: o.d, noDate: true });
+  for (const k of SERVICE_KEYS) {
+    const o = serviceInfo(c, k);
+    list.push({ k, t: SERVICES[k].t, sub: o.sub, date: o.date, s: o.s, txt: o.txt, d: o.d, noDate: true });
+  }
   c.custom.forEach(x => list.push({ k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
   return list;
 }
@@ -159,7 +171,7 @@ function renderWelcome() {
 
 function renderHome(c, list) {
   const urgent = list.filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
-  const missing = list.filter(i => i.s === "none" && !["casco"].includes(i.k));
+  const missing = list.filter(i => i.s === "none" && !["casco", "timing"].includes(i.k));
   let h = `<div class="section"><h2>Teendők</h2><div class="card list">${urgent.length ? urgent.map(itemHtml).join("")
     : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`}</div></div>`;
   if (missing.length) h += `<div class="section"><h2>Még nincs megadva</h2><div class="card list">${missing.map(itemHtml).join("")}</div></div>`;
@@ -255,7 +267,7 @@ function carForm(c) {
       if (isNew) {
         const id = uid();
         S.cars.push({ id, ...data, docs: {}, notes: {}, log: [], custom: [],
-          oil: { date: "", km: data.km, everyKm: 15000, everyMonths: 12 } });
+          ...Object.fromEntries(SERVICE_KEYS.map(k => [k, { date: "", km: data.km, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths }])) });
         S.sel = id; tab = "docs";
         toast("Autó hozzáadva. Most add meg a lejáratokat.");
       } else Object.assign(c, data);
@@ -268,15 +280,15 @@ function carForm(c) {
 }
 
 function docForm(c, k) {
-  if (k === "oil") {
-    const o = c.oil;
-    const form = sheet(`<h2>Olajcsere</h2><p class="hint">Az utolsó olajcsere és az intervallum alapján számol. Amelyik előbb jön, a km vagy az idő, az számít.</p>
+  if (SERVICES[k]) {
+    const o = c[k], def = SERVICES[k];
+    const form = sheet(`<h2>${def.t}</h2><p class="hint">${def.hint} Amelyik előbb jön, a km vagy az idő, az számít.</p>
       <div class="row2">${field("date", "Utolsó csere", `type="date" required value="${v(o.date)}"`)}${field("km", "Km-állás akkor", `type="number" inputmode="numeric" required value="${v(o.km)}"`)}</div>
       <div class="row2">${field("everyKm", "Csere km-enként", `type="number" inputmode="numeric" required value="${v(o.everyKm)}"`)}${field("everyMonths", "vagy hónaponként", `type="number" inputmode="numeric" required value="${v(o.everyMonths)}"`)}</div>`,
-      f => { c.oil = { date: f.date, km: Number(f.km), everyKm: Number(f.everyKm), everyMonths: Number(f.everyMonths) }; },
+      f => { c[k] = { date: f.date, km: Number(f.km), everyKm: Number(f.everyKm), everyMonths: Number(f.everyMonths) }; },
       o.date ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
     const cal = form.querySelector("[data-cal]");
-    if (cal) cal.onclick = () => exportCalendar([c], "oil");
+    if (cal) cal.onclick = () => exportCalendar([c], k);
     return;
   }
   if (k.startsWith("c:")) {
@@ -317,12 +329,12 @@ function logForm(c, e) {
     ${field("title", "Mit csináltak", `required value="${v(e.title)}" placeholder="pl. Olajcsere + szűrők"`)}
     <div class="row2">${field("date", "Dátum", `type="date" required value="${v(e.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required value="${v(e.km)}"`)}</div>
     <div class="row2">${field("place", "Szerviz neve", `value="${v(e.place)}"`)}${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" value="${v(e.cost || "")}"`)}</div>
-    ${isNew ? `<label class="check"><input type="checkbox" id="f-isoil" name="isoil"><span>Ez olajcsere volt (a következőt innen számolja)</span></label>` : ""}`,
+    ${isNew ? SERVICE_KEYS.map(k => `<label class="check"><input type="checkbox" id="f-is-${k}" name="is-${k}"><span>${SERVICES[k].logLabel} (a következőt innen számolja)</span></label>`).join("") : ""}`,
     f => {
       const data = { date: f.date, km: Number(f.km), title: f.title.trim(), place: f.place.trim(), cost: f.cost ? Number(f.cost) : 0 };
       if (isNew) c.log.push({ id: uid(), ...data }); else Object.assign(e, data);
       if (data.km > c.km) c.km = data.km;
-      if (f.isoil) c.oil = { ...c.oil, date: data.date, km: data.km };
+      for (const k of SERVICE_KEYS) if (f["is-" + k]) c[k] = { ...c[k], date: data.date, km: data.km };
     },
     isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
   if (!isNew) form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt a bejegyzést?", () => { c.log = c.log.filter(y => y.id !== e.id); });
@@ -368,10 +380,10 @@ function calendarEvents(cars, only) {
       if (only && i.k !== only) continue;
       if (!i.date) continue;
       if (!only && i.s === "bad" && dateStatus(i.date).d < -1) continue; // régen lejártat nem rakunk be
-      const verb = i.k === "oil" ? "esedékes" : "lejár";
+      const verb = SERVICES[i.k] ? "esedékes" : "lejár";
       evs.push({ uid: `${c.id}-${i.k.replace(":", "-")}-${i.date}`, date: i.date,
         title: `${i.t} ${verb} – ${c.name}`,
-        desc: `${label}\n${i.k === "oil" ? "Olajcsere: " + i.sub : i.sub}\nGarázs napló` });
+        desc: `${label}\n${SERVICES[i.k] ? SERVICES[i.k].t + ": " + i.sub : i.sub}\nGarázs napló` });
     }
   }
   return evs;
