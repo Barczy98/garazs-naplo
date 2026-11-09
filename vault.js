@@ -68,6 +68,7 @@ const Vault = (() => {
     master = null; pin = "";
     files.forEach(f => f.thumbUrl && URL.revokeObjectURL(f.thumbUrl)); files = [];
     clearTimeout(idleTimer);
+    closeViewer();
     if (tab === "vault") { closeSheet(); render(); }
   }
   function idleLock() { lock(); }
@@ -218,10 +219,10 @@ const Vault = (() => {
     const lib = await loadPdfJs();
     return lib.getDocument({ data: new Uint8Array(bytes.slice(0)), standardFontDataUrl: "lib/pdfjs/standard_fonts/" }).promise;
   }
-  async function pageCanvas(doc, n, cssWidth) {
+  async function pageCanvas(doc, n, cssWidth, sharp = 1) {
     const page = await doc.getPage(n);
     const base = page.getViewport({ scale: 1 });
-    const ratio = Math.min(window.devicePixelRatio || 1, 2.5);
+    const ratio = Math.min(window.devicePixelRatio || 1, 3) * sharp;
     const vp = page.getViewport({ scale: (cssWidth / base.width) * ratio });
     const cv = document.createElement("canvas");
     cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
@@ -241,19 +242,19 @@ const Vault = (() => {
     try { doc = await openPdf(bytes); }
     catch (e) { box.innerHTML = `<p class="hint">A PDF-et nem sikerült megjeleníteni. A Megosztás gombbal megnyithatod.</p>`; return; }
     box.innerHTML = "";
-    const label = document.querySelector("#sheet .pdfcount");
-    if (label) label.textContent = `${doc.numPages} oldal`;
+    if (box.onCount) box.onCount(doc.numPages);
     const width = box.clientWidth || 340;
     for (let n = 1; n <= doc.numPages; n++) {
       if (!box.isConnected) break; // közben bezárták
       const wrap = document.createElement("figure");
       wrap.className = "pdfpage";
-      wrap.innerHTML = `<figcaption>${n}. oldal</figcaption>`;
+      wrap.dataset.page = n;
       box.appendChild(wrap);
+      if (box.onPage) box.onPage(wrap);
       try {
-        const cv = await pageCanvas(doc, n, width);
+        const cv = await pageCanvas(doc, n, width, 1.5);
         cv.setAttribute("aria-label", `${n}. oldal`);
-        wrap.insertBefore(cv, wrap.firstChild);
+        wrap.appendChild(cv);
         if (n === 1 && !f.thumbUrl) saveThumbFrom(cv, f);
       } catch (e) { wrap.insertAdjacentHTML("afterbegin", `<p class="hint">Ez az oldal nem jeleníthető meg.</p>`); }
     }
@@ -318,34 +319,98 @@ const Vault = (() => {
     const r = await getFile(f.id);
     return new Blob([await decrypt(master, r.iv, r.data)], { type: f.type });
   }
+  // Teljes képernyős nézegető (mint az iPhone Fájlok appja). Külön réteg, hogy az átnevezés/törlés lap fölé nyílhasson.
+  const VI = {
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    zoom: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8.5v5M8.5 11h5"/>',
+  };
+  const vic = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${VI[k]}</svg>`;
+  let viewerUrl = "";
+  function closeViewer() {
+    const el = document.getElementById("viewer");
+    if (el) el.remove();
+    if (viewerUrl) { URL.revokeObjectURL(viewerUrl); viewerUrl = ""; }
+    document.body.classList.remove("noscroll");
+  }
   async function view(id) {
     const f = files.find(x => x.id === id); if (!f || !master) return;
     const blob = await fileBlob(f);
     const isPdf = f.type === "application/pdf";
-    const url = isPdf ? "" : URL.createObjectURL(blob);
-    const form = sheet(`<h2>${esc(f.name)}</h2>
-      ${isPdf ? `<p class="hint pdfcount">PDF betöltése...</p><div class="pdfpages" id="pdfpages"><p class="hint">Oldalak betöltése...</p></div>` : `<img class="imgview" src="${url}" alt="${esc(f.name)}">`}
-      <label class="field"><span class="label">Megnevezés</span><input id="f-vname" name="vname" value="${esc(f.name)}" required></label>
-      <p class="hint num">${isPdf ? "PDF" : "Kép"}, ${(f.size / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 })} MB, feltöltve ${fmtDate(iso(new Date(f.created)))}</p>`,
-      async fd => {
-        const name = fd.vname.trim() || f.name;
-        if (name !== f.name) {
-          const r = await getFile(f.id);
-          const em = await encrypt(master, enc.encode(JSON.stringify({ name, type: f.type, size: f.size })));
-          r.miv = em.iv; r.mct = em.ct; await putFile(r); f.name = name;
-        }
-        URL.revokeObjectURL(url); render();
-      },
-      `<button type="button" class="btn danger" data-del>Törlés</button><button type="button" class="btn ghost" data-share>Megosztás</button>`);
-    if (isPdf) blob.arrayBuffer().then(buf => renderPdfInto(form.querySelector("#pdfpages"), buf, f));
-    form.querySelector("[data-share]").onclick = () => {
+    closeViewer();
+    if (!isPdf) viewerUrl = URL.createObjectURL(blob);
+    const el = document.createElement("div");
+    el.id = "viewer"; el.className = "viewer"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", f.name);
+    el.innerHTML = `
+      <header class="vw-top">
+        <button type="button" class="vw-btn" data-x aria-label="Bezárás">${vic("close")}</button>
+        <div class="vw-title"><b>${esc(f.name)}</b><small class="num">${isPdf ? "PDF" : "Kép"}, ${mb(f.size)}</small></div>
+        <button type="button" class="vw-btn" data-share aria-label="Megosztás">${vic("share")}</button>
+      </header>
+      <div class="vw-body${isPdf ? "" : " img"}">
+        ${isPdf ? `<div class="vw-pages"><p class="vw-load">Oldalak betöltése...</p></div>` : `<img src="${viewerUrl}" alt="${esc(f.name)}">`}
+      </div>
+      ${isPdf ? `<div class="vw-count num" aria-live="polite" hidden></div>` : ""}
+      <footer class="vw-bar">
+        <button type="button" data-zoom>${vic("zoom")}<span>Nagyítás</span></button>
+        <button type="button" data-ren>${vic("edit")}<span>Átnevezés</span></button>
+        <button type="button" data-del class="vw-del">${vic("trash")}<span>Törlés</span></button>
+      </footer>`;
+    document.body.appendChild(el);
+    document.body.classList.add("noscroll");
+    const body = el.querySelector(".vw-body");
+
+    // dupla koppintás vagy a Nagyítás gomb: 2x-es nagyítás, oldalra görgethető
+    const toggleZoom = () => {
+      // a nézet közepe ugyanott maradjon nagyítás után is
+      const cy = (body.scrollTop + body.clientHeight / 2) / body.scrollHeight;
+      const cx = (body.scrollLeft + body.clientWidth / 2) / body.scrollWidth;
+      body.classList.toggle("zoomed");
+      body.scrollTop = cy * body.scrollHeight - body.clientHeight / 2;
+      body.scrollLeft = cx * body.scrollWidth - body.clientWidth / 2;
+      el.querySelector("[data-zoom] span").textContent = body.classList.contains("zoomed") ? "Kicsinyítés" : "Nagyítás";
+    };
+    let lastTap = 0;
+    body.addEventListener("touchend", e => { const t = Date.now(); if (t - lastTap < 300) { e.preventDefault(); toggleZoom(); lastTap = 0; } else lastTap = t; });
+    body.addEventListener("dblclick", toggleZoom);
+    el.querySelector("[data-zoom]").onclick = toggleZoom;
+
+    if (isPdf) {
+      const pages = el.querySelector(".vw-pages"), counter = el.querySelector(".vw-count");
+      let total = 0, hideT;
+      const show = n => { counter.textContent = `${n} / ${total}`; counter.hidden = false; clearTimeout(hideT); hideT = setTimeout(() => { counter.hidden = true; }, 1500); };
+      const io = new IntersectionObserver(es => { es.forEach(e => { if (e.isIntersecting) show(Number(e.target.dataset.page)); }); }, { root: body, threshold: 0.5 });
+      pages.onCount = n => { total = n; el.querySelector(".vw-title small").textContent = `PDF, ${n} oldal, ${mb(f.size)}`; };
+      pages.onPage = fig => io.observe(fig);
+      blob.arrayBuffer().then(buf => renderPdfInto(pages, buf, f));
+    }
+
+    el.querySelector("[data-x]").onclick = closeViewer;
+    el.querySelector("[data-share]").onclick = () => {
       const file = new File([blob], f.name + (isPdf ? ".pdf" : ".jpg"), { type: f.type });
       if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});
       else toast("A megosztás ezen az eszközön nem érhető el.");
     };
-    form.querySelector("[data-del]").onclick = () => confirmIn(form, `Törlöd: <b>${esc(f.name)}</b>?`, async () => {
-      await delFile(f.id); URL.revokeObjectURL(url); await loadList(); render(); toast("Fájl törölve.");
-    });
+    el.querySelector("[data-ren]").onclick = () => {
+      sheet(`<h2>Átnevezés</h2>${field("vname", "Megnevezés", `required value="${esc(f.name)}"`)}`, async fd => {
+        const name = fd.vname.trim() || f.name;
+        if (name === f.name) return;
+        const r = await getFile(f.id);
+        const em = await encrypt(master, enc.encode(JSON.stringify({ name, type: f.type, size: f.size })));
+        r.miv = em.iv; r.mct = em.ct; await putFile(r); f.name = name;
+        el.querySelector(".vw-title b").textContent = name; render();
+      });
+      setTimeout(() => { const i = document.getElementById("f-vname"); if (i) { i.focus(); i.select(); } }, 50);
+    };
+    el.querySelector("[data-del]").onclick = () => {
+      const form = sheet(`<h2>Törlöd ezt az iratot?</h2><p><b>${esc(f.name)}</b></p><p class="hint">A törlés nem vonható vissza.</p>`, null,
+        `<button type="button" class="btn danger" data-yes>Törlés</button>`);
+      form.querySelector("[data-yes]").onclick = async () => {
+        await delFile(f.id); closeSheet(); closeViewer(); await loadList(); render(); toast("Irat törölve.");
+      };
+    };
   }
 
   /* ---------- PIN megadás és módosítás ---------- */
