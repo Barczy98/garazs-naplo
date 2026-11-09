@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.11.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -39,7 +39,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": 
 const $ = s => document.querySelector(s);
 
 /* ---------- adat ---------- */
-function emptyState() { return { version: 1, sel: null, cars: [], personal: { docs: {}, notes: {} }, settings: { remind: [30, 7, 1] } }; }
+function emptyState() { return { version: 1, sel: null, cars: [], personal: { docs: {}, notes: {} }, settings: { remind: [30, 7, 1], theme: "system" } }; }
 function normalize(s) {
   const base = emptyState();
   if (!s || !Array.isArray(s.cars)) return base;
@@ -75,6 +75,17 @@ function save() {
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 const car = () => S.cars.find(c => c.id === S.sel);
+
+/* ---------- megjelenés: rendszer / világos / sötét ---------- */
+function applyTheme() {
+  const t = S.settings.theme;
+  const root = document.documentElement;
+  if (t === "light" || t === "dark") root.dataset.theme = t; else delete root.dataset.theme;
+  const dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute("content", dark ? "#111613" : "#e9eee8"));
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+applyTheme();
 
 /* ---------- állapotszámítás ---------- */
 function dateStatus(date) {
@@ -438,23 +449,37 @@ function remindText() {
 }
 
 function renderSettings() {
-  const r = S.settings.remind;
+  const r = S.settings.remind, theme = S.settings.theme || "system";
+  const T = {
+    system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    dark: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  };
+  const check = '<svg class="chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const group = (title, body, note = "") => `<section class="lgroup"><h2 class="lmonth">${title}</h2><div class="rows">${body}</div>${note ? `<p class="setnote">${note}</p>` : ""}</section>`;
   return `<h1 class="pagetitle">Beállítások</h1>
-  <div class="settings" style="display:grid;gap:18px">
-    <div class="section" style="margin-top:0"><h2>Emlékeztetők</h2><div class="card">
-      <p class="hint">Hány nappal a lejárat előtt szóljon a Naptár (reggel 9-kor):</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${REMIND_OPTIONS.map(d =>
-        `<button class="toggle" aria-pressed="${r.includes(d)}" data-remind="${d}">${d} nap</button>`).join("")}</div>
-      <button class="btn" data-act="calall">Minden lejárat a Naptárba (autók és személyes)</button>
-      <p class="hint">Ezt elég egyszer megcsinálni, és utána akkor, ha valamelyik dátum megváltozik.</p>
-    </div></div>
-    <div class="section" style="margin-top:0"><h2>Mentés</h2><div class="card">
-      <p class="hint">Az adatok csak ezen a telefonon vannak. Néha ments egy másolatot a Fájlokba vagy az iCloud Drive-ra, hogy telefoncsere után se vesszen el semmi.</p>
-      <button class="btn" data-act="export" ${S.cars.length ? "" : "disabled"}>Biztonsági mentés készítése</button>
-      <button class="btn quiet" data-act="import">Visszaállítás mentésből</button>
-      ${S.lastBackup ? `<p class="hint">Utolsó mentés: ${fmtDate(S.lastBackup)}</p>` : ""}
-    </div></div>
-    <p class="hint">Garázs napló ${APP_VERSION}</p>
+  <div class="setlist">
+    <section class="lgroup"><h2 class="lmonth">Megjelenés</h2>
+      <div class="segbar theme" role="radiogroup" aria-label="Megjelenés">${[["system", "Rendszer"], ["light", "Világos"], ["dark", "Sötét"]].map(([k, l]) =>
+        `<button role="radio" aria-checked="${theme === k}" aria-pressed="${theme === k}" data-theme-set="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${T[k]}</svg>${l}</button>`).join("")}</div>
+      <p class="setnote">${theme === "system" ? "Az iPhone beállítását követi, este magától sötétre vált." : theme === "dark" ? "Mindig sötét." : "Mindig világos."}</p></section>
+
+    ${group("Autók", S.cars.map(c => `<button class="lrow" data-caredit="${c.id}">
+        <span class="miniplate"><i>RO</i><b>${esc(c.plate || "–")}</b></span>
+        <span class="lt"><span class="t">${esc(c.name)}</span><span class="s">${esc(c.model || "")}${c.year ? ", " + esc(c.year) : ""}</span></span>${CHEV}</button>`).join("") +
+      `<button class="lrow" data-act="addcar"><span class="lt"><span class="t act">Új autó hozzáadása</span></span>${CHEV}</button>`)}
+
+    ${group("Naptár emlékeztetők", REMIND_OPTIONS.map(d => `<button class="lrow" role="menuitemcheckbox" aria-checked="${r.includes(d)}" data-remind="${d}">
+        <span class="lt"><span class="t">${d === 1 ? "1 nappal előtte" : d + " nappal előtte"}</span></span>${check}</button>`).join("") +
+      `<button class="lrow" data-act="calall"><span class="lt"><span class="t act">Minden lejárat a Naptárba</span><span class="s">autók és személyes iratok</span></span>${CHEV}</button>`,
+      "A Naptár reggel 9-kor szól. Dátumváltozás után add hozzá újra.")}
+
+    ${group("Biztonsági mentés", `<button class="lrow" data-act="export" ${S.cars.length ? "" : "disabled"}>
+        <span class="lt"><span class="t act">Mentés készítése</span><span class="s">${S.lastBackup ? "Utolsó mentés: " + fmtDate(S.lastBackup) : "Még nem készült mentés"}</span></span>${CHEV}</button>
+      <button class="lrow" data-act="import"><span class="lt"><span class="t">Visszaállítás mentésből</span></span>${CHEV}</button>`,
+      "Az adatok csak ezen a telefonon vannak. Néha ments a Fájlokba vagy az iCloud Drive-ra.")}
+
+    <p class="appfoot">Garázs napló ${APP_VERSION}</p>
   </div>`;
 }
 
@@ -849,6 +874,8 @@ document.addEventListener("click", e => {
   if (b.dataset.cost) { costForm(c, c.costs.find(x => x.id === b.dataset.cost)); return; }
   if (b.dataset.year) { costYear = b.dataset.year; render(); return; }
   if (b.dataset.entry) { logForm(c, c.log.find(x => x.id === b.dataset.entry)); return; }
+  if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; applyTheme(); save(); render(); return; }
+  if (b.dataset.caredit) { carForm(S.cars.find(x => x.id === b.dataset.caredit)); return; }
   if (b.dataset.remind) {
     const d = Number(b.dataset.remind), r = S.settings.remind;
     S.settings.remind = r.includes(d) ? r.filter(x => x !== d) : [...r, d];

@@ -22,12 +22,19 @@
   --font:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
-@media (prefers-color-scheme: dark){:root{
+/* sötét mód: a rendszer szerint, vagy a Beállításokban kézzel választva */
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --paper:#111613; --card:#192019; --ink:#e7ece6; --muted:#97a39c; --rule:#2a332c;
   --signal:#f5b82e; --drum:#060908;
   --bad:#ff8b80; --bad-bg:#3b1915; --warn:#f2b45c; --warn-bg:#382a12; --ok:#79d3a0; --ok-bg:#15301f;
   --stamp:#8fb0ff; --bar:#7fa6d6;
   color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111613; --card:#192019; --ink:#e7ece6; --muted:#97a39c; --rule:#2a332c;
+  --signal:#f5b82e; --drum:#060908;
+  --bad:#ff8b80; --bad-bg:#3b1915; --warn:#f2b45c; --warn-bg:#382a12; --ok:#79d3a0; --ok-bg:#15301f;
+  --stamp:#8fb0ff; --bar:#7fa6d6;
+  color-scheme:dark}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;min-height:100%}
@@ -321,3 +328,17 @@ body.noscroll{overflow:hidden}
 .meter i{display:block;height:100%}
 .meter i.ok{background:var(--ok)} .meter i.warn{background:var(--signal)} .meter i.bad{background:var(--bad)}
 .lgroup .empty{padding:16px}
+
+/* beállítások */
+.setlist{display:grid;gap:18px}
+.setnote{margin:0;padding:6px 4px 0;font-size:13px;color:var(--muted)}
+.lrow .chk{flex:none;width:20px;height:20px;stroke:var(--ink);fill:none;stroke-width:2.2;visibility:hidden}
+.lrow[aria-checked="true"] .chk{visibility:visible}
+.lrow .act{color:var(--ink);font-weight:650}
+.miniplate{flex:none;display:inline-flex;border:1px solid #18222b;border-radius:3px;overflow:hidden;background:#fff;color:#111;font-weight:700;font-stretch:90%;font-size:12px;letter-spacing:.04em}
+.miniplate i{font-style:normal;background:#0a3a9e;color:#fff;font-size:7px;padding:6px 2px 0}
+.miniplate b{padding:2px 6px;font-weight:700}
+.segbar.theme button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px}
+.segbar.theme svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+.appfoot{text-align:center;font-size:13px;color:var(--muted);padding:4px 12px 0}
+.miniplate{min-width:96px}.miniplate b{flex:1;text-align:center}
