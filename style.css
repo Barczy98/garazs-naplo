@@ -178,33 +178,56 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-weight:600;z-index:30;max-width:90vw}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
 
-/* iratok mappa */
-.vintro{padding:24px 18px;display:grid;gap:12px;justify-items:center;text-align:center}
-.vicon{width:56px;height:56px;stroke:var(--ink);fill:none;stroke-width:1.5}
-.lock{display:grid;gap:16px;justify-items:center;text-align:center;padding-top:4vh}
-.dots{display:flex;gap:16px;justify-content:center;padding:6px 0}
-.dots span{width:15px;height:15px;border-radius:50%;border:2px solid var(--ink)}
-.dots span.on{background:var(--ink)}
-.dots.shake{animation:shake .35s}
+/* iratok mappa: a km-óra sötét paneljét viszi tovább */
+.vpanel{background:var(--drum);color:var(--drum-fg);border-radius:16px;padding:22px 18px;display:grid;gap:12px;justify-items:center;text-align:center}
+.vpanel[data-v="face"]{cursor:pointer}
+.vpanel p{margin:0;color:var(--drum-muted)}
+.vpanel h2{font-size:22px;font-stretch:80%;font-weight:800}
+.vbig{width:44px;height:44px;stroke:currentColor;fill:none;stroke-width:1.6}
+.vmsg{font-weight:600}
+.pinbox{display:flex;gap:6px;justify-content:center}
+.pinbox span{width:46px;height:56px;border-radius:6px;background:linear-gradient(#2b333a,#0d1114 22%,#0d1114 78%,#2b333a);position:relative}
+.pinbox span.on::after{content:"";position:absolute;inset:0;margin:auto;width:12px;height:12px;border-radius:50%;background:var(--drum-fg)}
+.pinbox span:last-child.on{background:linear-gradient(#ffd25e,#f0a800 22%,#f0a800 78%,#c98a00)}
+.pinbox span:last-child.on::after{background:#1b1400}
+.sheet .pinbox{padding:6px 0}
+.sheet .pinbox span{background:var(--paper);border:1px solid var(--rule)}
+.sheet .pinbox span.on::after{background:var(--ink)}
+.pinbox.shake{animation:shake .35s}
 @keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
-.keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px;justify-content:center}
-.keypad button{width:72px;height:72px;border-radius:50%;border:1px solid var(--rule);background:var(--card);font-size:28px;font-weight:600;font-stretch:90%;text-align:center}
+.vlock{display:grid;gap:14px}
+.faceid{display:flex;align-items:center;justify-content:center;gap:10px}
+.faceid svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.keypad button{height:58px;border-radius:12px;border:1px solid var(--rule);background:var(--card);font-size:26px;font-weight:650;font-stretch:85%;text-align:center;display:grid;place-items:center;font-variant-numeric:tabular-nums}
 .keypad button:active{background:var(--rule)}
-.sheet .keypad{margin:6px 0}
-.vbar{display:flex;gap:10px}
-.vbar .btn:first-child{flex:1}
-.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
-.vfile{display:grid;gap:6px;background:none;border:0;padding:0;min-width:0}
-.vfile img,.vfile .pdf{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;border:1px solid var(--rule);background:var(--card)}
-.vfile .pdf{display:grid;place-items:center;font-weight:800;font-stretch:75%;font-size:26px;color:var(--bad)}
-.vname{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vset{padding:14px;display:grid;gap:10px}
+.keypad svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.6}
+.vlock .link{justify-self:center}
+.vhead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:4px}
+.vhead svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8}
+.vstatus{display:flex;gap:8px;align-items:baseline;font-size:13.5px;color:var(--muted);margin-top:-6px}
+.vdot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok);transform:translateY(-1px)}
+.vtip,.vadd{display:flex;align-items:center;gap:14px;width:100%;padding:14px;border-radius:14px;text-align:left;cursor:pointer}
+.vtip{background:var(--drum);color:var(--drum-fg);border:0}
+.vtip small{color:var(--drum-muted)}
+.vadd{border:1.5px dashed var(--muted);background:transparent}
+.vtip svg,.vadd svg{flex:none;width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.8}
+.vtip span,.vadd span,.vtx{display:grid;gap:1px;min-width:0}
+.vtip small,.vadd small,.vtx small{font-size:13px;font-weight:500}
+.vadd small,.vtx small{color:var(--muted)}
+.vlist .vrow{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;border-top:1px solid var(--rule);background:none}
+.vlist .vrow:first-child{border-top:0}
+.vth{flex:none;width:48px;height:62px;border-radius:6px;overflow:hidden;border:1px solid var(--rule);background:#fff;display:grid;place-items:center}
+.vth img{width:100%;height:100%;object-fit:cover}
+.vpdf{font-weight:800;font-stretch:72%;font-size:15px;color:var(--bad)}
+.vtx{flex:1}
+.vtx b{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vchev{flex:none;width:18px;height:18px;stroke:var(--muted);fill:none;stroke-width:2}
+.vempty{text-align:center;padding:8px 0}
+.vfoot{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:14px;color:var(--muted);padding-top:4px}
+body.vhide .vlist,body.vhide .imgview,body.vhide .pdfpages{filter:blur(18px)}
 .imgview{width:100%;max-height:60vh;object-fit:contain;border-radius:10px;background:var(--paper)}
-.pdfpages{display:grid;gap:14px;max-height:62vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:10px}
-.pdfpage{margin:0;display:grid;gap:4px}
-.pdfpage canvas{width:100%;height:auto;background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
-.pdfpage figcaption{font-size:12.5px;color:var(--muted);text-align:center}
-@media (prefers-reduced-motion:reduce){.dots.shake{animation:none}}
+@media (prefers-reduced-motion:reduce){.pinbox.shake{animation:none}}
 
 /* napló: szerviz / tankolás / költségek */
 .tag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--muted);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:4px;vertical-align:2px}
@@ -235,3 +258,7 @@ select{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1
 .hrow{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted)}
 .hrow b{color:var(--ink);white-space:nowrap}
 .tag.covered{color:var(--ok);border-color:var(--ok)}
+.pdfpages{display:grid;gap:14px;max-height:62vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:10px}
+.pdfpage{margin:0;display:grid;gap:4px}
+.pdfpage canvas{width:100%;height:auto;background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.pdfpage figcaption{font-size:12.5px;color:var(--muted);text-align:center}
