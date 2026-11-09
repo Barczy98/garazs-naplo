@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.8.2";
+const APP_VERSION = "1.9.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -244,20 +244,23 @@ function renderHome(c, list) {
   return h;
 }
 
+// Lejáratok hónapok szerint csoportosítva: pötty, név, jobbra dátum és hátralévő napok
 function timeline(list) {
   const dated = list.filter(i => i.date).sort((a, b) => a.date.localeCompare(b.date));
   const undated = list.filter(i => !i.date);
-  let tl = "", month = "";
+  const row = i => `<button class="lrow" data-edit="${esc(i.k)}">
+      <span class="ldot ${i.s}"></span>
+      <span class="lt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span>
+      <span class="ld num ${i.s}">${i.date ? `${shortDate(i.date)}<small>${daysText(i.date)}</small>` : "–"}</span>
+      <svg class="lchev" viewBox="0 0 8 13" aria-hidden="true"><path d="M1 1l5.5 5.5L1 12"/></svg></button>`;
+  const groups = [];
   for (const i of dated) {
     const m = monthLabel(i.date);
-    if (m !== month) { tl += `<div class="m">${m}</div>`; month = m; }
-    tl += `<button class="ev ${i.s}" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span>
-      <span class="d num">${shortDate(i.date)}<small>${daysText(i.date)}</small></span></button>`;
+    if (!groups.length || groups[groups.length - 1].m !== m) groups.push({ m, items: [] });
+    groups[groups.length - 1].items.push(i);
   }
-  if (undated.length) {
-    tl += `<div class="m">Nincs megadva</div>` + undated.map(i => `<button class="ev none" data-edit="${esc(i.k)}"><span class="evt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span><span class="d">–</span></button>`).join("");
-  }
-  return `<div class="rows tlbox"><div class="tl">${tl}</div></div>`;
+  if (undated.length) groups.push({ m: "Nincs megadva", items: undated });
+  return `<div class="lgroups">${groups.map(g => `<div class="lgroup"><p class="lmonth">${g.m}</p><div class="rows">${g.items.map(row).join("")}</div></div>`).join("")}</div>`;
 }
 
 function renderDocs(c, list) {

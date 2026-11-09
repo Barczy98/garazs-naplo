@@ -296,3 +296,20 @@ body.noscroll{overflow:hidden}
 .vw-btn.light{background:var(--paper);color:var(--ink);border:1px solid var(--rule)}
 .vw-btn.light svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
 .card-bar{grid-template-columns:repeat(4,1fr);border:0;border-radius:14px;padding:6px 4px;margin-top:2px}
+
+/* lejáratok: hónapok szerinti csoportos lista */
+.lgroups{display:grid;gap:16px}
+.lgroup{display:grid;gap:6px}
+.lmonth{margin:0;padding:0 4px;font-size:14px;font-weight:650;color:var(--muted);font-stretch:90%}
+.lmonth::first-letter{text-transform:uppercase}
+.lrow{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px 11px 14px;border:0;border-top:1px solid var(--rule);background:none;min-height:52px}
+.lrow:first-child{border-top:0}
+.ldot{flex:none;width:10px;height:10px;border-radius:50%}
+.ldot.bad{background:var(--bad)} .ldot.warn{background:var(--signal)} .ldot.ok{background:var(--ok)} .ldot.none{border:1.5px dashed var(--muted)}
+.lt{flex:1;min-width:0;display:grid}
+.ld{flex:none;text-align:right;font-size:14.5px;line-height:1.25;color:var(--ink)}
+.ld small{display:block;font-size:12.5px;color:var(--muted)}
+.ld.bad,.ld.bad small{color:var(--bad);font-weight:650}
+.ld.warn,.ld.warn small{color:var(--warn);font-weight:650}
+.ld.none{color:var(--muted)}
+.lchev{flex:none;width:8px;height:13px;stroke:var(--muted);fill:none;stroke-width:2;opacity:.6}
