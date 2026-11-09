@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.10.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -233,26 +233,44 @@ function renderHome(c, list) {
   const urgent = [...list, ...personalItems()].filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
   const missing = list.filter(i => i.s === "none" && !i.service);
   const services = list.filter(i => i.service);
+  const group = (title, body, extra = "") => `<section class="lgroup"><h2 class="lmonth">${title}${extra}</h2><div class="rows">${body}</div></section>`;
   let h = odometer(c);
-  h += `<section class="section"><h2 class="h">Teendők <small>${urgent.length ? urgent.length + " tétel" : ""}</small></h2>
-    <div class="rows">${urgent.length ? urgent.map(rowHtml).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`}</div></section>`;
-  h += `<section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${services.map(gaugeHtml).join("")}</div></section>`;
-  if (missing.length) h += `<section class="section"><h2 class="h">Még nincs megadva</h2><div class="rows">${missing.map(rowHtml).join("")}</div></section>`;
+  h += `<div class="lgroups">`;
+  h += group("Teendők", urgent.length ? urgent.map(i => lrowHtml(i, true)).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`);
+  h += group("Karbantartás", services.map(meterRowHtml).join(""));
+  if (missing.length) h += group("Még nincs megadva", missing.map(lrowHtml).join(""));
   const last = [...c.log].sort((a, b) => b.date.localeCompare(a.date))[0];
-  h += `<section class="section"><h2 class="h">Utolsó szerviz <button class="link" data-tab="log" data-lv="service">Szervizkönyv</button></h2>
-    <div class="rows">${last ? entryHtml(last) : `<div class="empty">Még nincs bejegyzés.</div>`}</div></section>`;
+  h += group("Utolsó szerviz", last ? `<button class="lrow" data-entry="${last.id}"><span class="lt"><span class="t">${esc(last.title)}</span>
+      <span class="s num">${fmtDate(last.date)}, ${fmtKm(last.km)}${last.place ? ", " + esc(last.place) : ""}</span></span>
+      <span class="ld num">${last.cost ? fmtMoney(last.cost) : ""}</span>${CHEV}</button>` : `<div class="empty">Még nincs bejegyzés.</div>`);
+  h += group("Gyors rögzítés", `<button class="lrow" data-act="addfuel"><span class="lt"><span class="t">Új tankolás</span></span>${CHEV}</button>
+      <button class="lrow" data-act="addlog"><span class="lt"><span class="t">Új szervizbejegyzés</span></span>${CHEV}</button>
+      <button class="lrow" data-act="addcost"><span class="lt"><span class="t">Új kiadás</span></span>${CHEV}</button>`);
+  h += `</div>`;
   return h;
 }
 
+const CHEV = '<svg class="lchev" viewBox="0 0 8 13" aria-hidden="true"><path d="M1 1l5.5 5.5L1 12"/></svg>';
+// egy lista sor: pötty, név, jobbra dátum és hátralévő napok (km-es tételnél a hátralévő km)
+function lrowHtml(i, showTag = false) {
+  const right = i.service && i.s !== "none" ? esc(i.txt)
+    : i.date ? `${shortDate(i.date)}<small>${daysText(i.date)}</small>` : "–";
+  return `<button class="lrow" data-edit="${esc(i.k)}">
+      <span class="ldot ${i.s}"></span>
+      <span class="lt"><span class="t">${esc(i.t)}${showTag === true && i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.sub)}</span></span>
+      <span class="ld num ${i.s}">${right}</span>${CHEV}</button>`;
+}
+// karbantartás sor: név, hátralévő km, alatta vékony csík
+function meterRowHtml(i) {
+  return `<button class="lrow mrow" data-edit="${esc(i.k)}">
+      <span class="lt"><span class="mtop"><span class="t">${esc(i.t)}</span><span class="ld num ${i.s}">${i.s === "none" ? "nincs megadva" : esc(i.txt)}</span></span>
+      ${i.frac == null ? `<span class="s">${esc(i.sub)}</span>` : `<span class="meter"><i class="${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></i></span><span class="s">${esc(i.sub)}</span>`}</span>${CHEV}</button>`;
+}
 // Lejáratok hónapok szerint csoportosítva: pötty, név, jobbra dátum és hátralévő napok
 function timeline(list) {
   const dated = list.filter(i => i.date).sort((a, b) => a.date.localeCompare(b.date));
   const undated = list.filter(i => !i.date);
-  const row = i => `<button class="lrow" data-edit="${esc(i.k)}">
-      <span class="ldot ${i.s}"></span>
-      <span class="lt"><span class="t">${esc(i.t)}</span><span class="s">${esc(i.sub)}</span></span>
-      <span class="ld num ${i.s}">${i.date ? `${shortDate(i.date)}<small>${daysText(i.date)}</small>` : "–"}</span>
-      <svg class="lchev" viewBox="0 0 8 13" aria-hidden="true"><path d="M1 1l5.5 5.5L1 12"/></svg></button>`;
+  const row = i => lrowHtml(i);
   const groups = [];
   for (const i of dated) {
     const m = monthLabel(i.date);

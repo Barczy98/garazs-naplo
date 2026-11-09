@@ -313,3 +313,11 @@ body.noscroll{overflow:hidden}
 .ld.warn,.ld.warn small{color:var(--warn);font-weight:650}
 .ld.none{color:var(--muted)}
 .lchev{flex:none;width:8px;height:13px;stroke:var(--muted);fill:none;stroke-width:2;opacity:.6}
+
+/* áttekintés: karbantartás sor vékony csíkkal */
+.mrow{padding-left:14px}
+.mtop{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.meter{display:block;height:3px;border-radius:2px;background:var(--rule);margin:7px 0 5px;overflow:hidden}
+.meter i{display:block;height:100%}
+.meter i.ok{background:var(--ok)} .meter i.warn{background:var(--signal)} .meter i.bad{background:var(--bad)}
+.lgroup .empty{padding:16px}
