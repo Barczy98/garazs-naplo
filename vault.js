@@ -338,6 +338,47 @@ const Vault = (() => {
   async function view(id) {
     const f = files.find(x => x.id === id); if (!f || !master) return;
     const blob = await fileBlob(f);
+    if (f.type === "application/pdf") return fullView(f, blob);
+    imageCard(f, blob);
+  }
+  function shareFile(f, blob) {
+    const file = new File([blob], f.name + (f.type === "application/pdf" ? ".pdf" : ".jpg"), { type: f.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});
+    else toast("A megosztás ezen az eszközön nem érhető el.");
+  }
+  function renameFile(f, after) {
+    sheet(`<h2>Átnevezés</h2>${field("vname", "Megnevezés", `required value="${esc(f.name)}"`)}`, async fd => {
+      const name = fd.vname.trim() || f.name;
+      if (name === f.name) return;
+      const r = await getFile(f.id);
+      const em = await encrypt(master, enc.encode(JSON.stringify({ name, type: f.type, size: f.size })));
+      r.miv = em.iv; r.mct = em.ct; await putFile(r); f.name = name;
+      render(); if (after) after(name);
+    });
+    setTimeout(() => { const i = document.getElementById("f-vname"); if (i) { i.focus(); i.select(); } }, 50);
+  }
+  function deleteFile(f) {
+    const form = sheet(`<h2>Törlöd ezt az iratot?</h2><p><b>${esc(f.name)}</b></p><p class="hint">A törlés nem vonható vissza.</p>`, null,
+      `<button type="button" class="btn danger" data-yes>Törlés</button>`);
+    form.querySelector("[data-yes]").onclick = async () => {
+      await delFile(f.id); closeSheet(); closeViewer(); await loadList(); render(); toast("Irat törölve.");
+    };
+  }
+  // kép (pl. jogosítvány, személyi): kis előnézet egy lapon; a képre koppintva teljes képernyő
+  function imageCard(f, blob) {
+    const url = URL.createObjectURL(blob);
+    const form = sheet(`<h2>${esc(f.name)}</h2>
+      <button type="button" class="imgcard" data-full aria-label="Megnyitás teljes képernyőn"><img src="${url}" alt="${esc(f.name)}"><span class="imgzoom">${vic("zoom")}</span></button>
+      <p class="hint num">Koppints a képre a teljes képernyős nézethez. Kép, ${mb(f.size)}, feltöltve: ${fmtDate(iso(new Date(f.created)))}</p>`, null,
+      `<button type="button" class="btn danger" data-del>Törlés</button><button type="button" class="btn ghost" data-ren>Átnevezés</button><button type="button" class="btn ghost" data-share>Megosztás</button>`);
+    const cleanup = () => URL.revokeObjectURL(url);
+    form.querySelector("[data-close]").textContent = "Bezárás";
+    form.querySelector("[data-full]").onclick = () => { closeSheet(); cleanup(); fullView(f, blob); };
+    form.querySelector("[data-share]").onclick = () => shareFile(f, blob);
+    form.querySelector("[data-ren]").onclick = () => { cleanup(); renameFile(f); };
+    form.querySelector("[data-del]").onclick = () => { cleanup(); deleteFile(f); };
+  }
+  function fullView(f, blob) {
     const isPdf = f.type === "application/pdf";
     closeViewer();
     if (!isPdf) viewerUrl = URL.createObjectURL(blob);
@@ -388,29 +429,9 @@ const Vault = (() => {
     }
 
     el.querySelector("[data-x]").onclick = closeViewer;
-    el.querySelector("[data-share]").onclick = () => {
-      const file = new File([blob], f.name + (isPdf ? ".pdf" : ".jpg"), { type: f.type });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file] }).catch(() => {});
-      else toast("A megosztás ezen az eszközön nem érhető el.");
-    };
-    el.querySelector("[data-ren]").onclick = () => {
-      sheet(`<h2>Átnevezés</h2>${field("vname", "Megnevezés", `required value="${esc(f.name)}"`)}`, async fd => {
-        const name = fd.vname.trim() || f.name;
-        if (name === f.name) return;
-        const r = await getFile(f.id);
-        const em = await encrypt(master, enc.encode(JSON.stringify({ name, type: f.type, size: f.size })));
-        r.miv = em.iv; r.mct = em.ct; await putFile(r); f.name = name;
-        el.querySelector(".vw-title b").textContent = name; render();
-      });
-      setTimeout(() => { const i = document.getElementById("f-vname"); if (i) { i.focus(); i.select(); } }, 50);
-    };
-    el.querySelector("[data-del]").onclick = () => {
-      const form = sheet(`<h2>Törlöd ezt az iratot?</h2><p><b>${esc(f.name)}</b></p><p class="hint">A törlés nem vonható vissza.</p>`, null,
-        `<button type="button" class="btn danger" data-yes>Törlés</button>`);
-      form.querySelector("[data-yes]").onclick = async () => {
-        await delFile(f.id); closeSheet(); closeViewer(); await loadList(); render(); toast("Irat törölve.");
-      };
-    };
+    el.querySelector("[data-share]").onclick = () => shareFile(f, blob);
+    el.querySelector("[data-ren]").onclick = () => renameFile(f, name => { el.querySelector(".vw-title b").textContent = name; });
+    el.querySelector("[data-del]").onclick = () => deleteFile(f);
   }
 
   /* ---------- PIN megadás és módosítás ---------- */

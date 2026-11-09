@@ -284,3 +284,9 @@ body.noscroll{overflow:hidden}
 .vw-bar button{border:0;background:none;color:#f4f6f2;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font-size:12px;font-weight:600}
 .vw-bar .vw-del{color:#ff8b80}
 .viewer button:focus-visible{outline:2px solid #f0a800;outline-offset:2px}
+
+/* kép kártya (kis előnézet) */
+.imgcard{position:relative;display:block;width:100%;padding:0;border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:var(--paper);cursor:zoom-in}
+.imgcard img{display:block;width:100%;max-height:34vh;object-fit:contain}
+.imgzoom{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;background:rgba(20,26,31,.75);display:grid;place-items:center}
+.imgzoom svg{width:18px;height:18px;stroke:#f4f6f2;fill:none;stroke-width:1.8}
