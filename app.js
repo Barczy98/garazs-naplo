@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -45,7 +45,7 @@ function normalize(s) {
   if (!s || !Array.isArray(s.cars)) return base;
   s.settings = Object.assign(base.settings, s.settings || {});
   s.personal = s.personal || base.personal;
-  s.personal.docs = s.personal.docs || {}; s.personal.notes = s.personal.notes || {};
+  s.personal.docs = s.personal.docs || {}; s.personal.notes = s.personal.notes || {}; s.personal.costs = s.personal.costs || [];
   s.cars.forEach(c => {
     c.docs = c.docs || {}; c.notes = c.notes || {}; c.log = c.log || []; c.custom = c.custom || [];
     c.fuel = c.fuel || []; c.costs = c.costs || [];
@@ -385,7 +385,10 @@ function renderCosts(c) {
       <span class="t">${COST_CATS[x.cat] || "Egyéb"}${x.note ? `: ${esc(x.note)}` : ""}</span><span class="s num">${fmtDate(x.date)}</span></span>
       <span class="cost num">${fmtMoney(x.amount)}</span></button>`).join("")
       : `<div class="empty">RCA, rovinieta, ITP, adó vagy bármi más (pl. mosás, parkolás).</div>`}</div>
-    <p class="hint">A tankolások és a szervizek ára magától bekerül. A lejáratoknál is beírhatod a megújítás árát.</p></section>`;
+    <p class="hint">A tankolások, a szervizek és a megújítások ára magától bekerül.</p></section>`;
+  const pers = S.personal.costs.filter(x => x.date.startsWith(costYear));
+  if (pers.length) h += `<section class="section"><h2 class="h">Személyes <small>nem autóhoz kötött</small></h2><div class="rows">${pers.map(x =>
+    `<div class="svc"><span class="svc-main"><span class="t">${PERSONAL_TYPES.find(t => t[0] === x.cat)?.[1] || "Egyéb"}</span><span class="s num">${fmtDate(x.date)}</span></span><span class="cost num">${fmtMoney(x.amount)}</span></div>`).join("")}</div></section>`;
   return h;
 }
 function costForm(c, x) {
@@ -485,13 +488,16 @@ function carForm(c) {
 function docForm(c, k) {
   if (SERVICES[k]) {
     const o = c[k], def = SERVICES[k];
-    const form = sheet(`<h2>${def.t}</h2><p class="hint">${def.hint} Amelyik előbb jön, a km vagy az idő, az számít.</p>
+    const form = sheet(`<h2>${def.t}</h2>
+      <button type="button" class="btn wide" data-renew>${def.t} megtörtént: új csere rögzítése</button>
+      <p class="hint">Vagy javítsd a mostani adatokat. ${def.hint} Amelyik előbb jön, a km vagy az idő, az számít.</p>
       <div class="row2">${field("date", "Utolsó csere", `type="date" required value="${v(o.date)}"`)}${field("km", "Km-állás akkor", `type="number" inputmode="numeric" required value="${v(o.km)}"`)}</div>
       <div class="row2">${field("everyKm", "Csere km-enként", `type="number" inputmode="numeric" required value="${v(o.everyKm)}"`)}${field("everyMonths", "vagy hónaponként", `type="number" inputmode="numeric" required value="${v(o.everyMonths)}"`)}</div>`,
       f => { c[k] = { date: f.date, km: Number(f.km), everyKm: Number(f.everyKm), everyMonths: Number(f.everyMonths) }; },
       o.date ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
     const cal = form.querySelector("[data-cal]");
     if (cal) cal.onclick = () => exportCalendar([c], k);
+    form.querySelector("[data-renew]").onclick = () => serviceSwapForm(c, k);
     return;
   }
   if (k.startsWith("p:")) return personalForm(k.slice(2));
@@ -500,31 +506,112 @@ function docForm(c, k) {
     return customForm(c, x);
   }
   const t = DOC_TYPES.find(d => d[0] === k);
-  const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]} · ${esc(c.name)}</p>
+  const hist = c.costs.filter(x => x.cat === k).sort((a, b) => b.date.localeCompare(a.date));
+  const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]}, ${esc(c.name)}${c.docs[k] ? `: ${fmtDate(c.docs[k])}, ${daysText(c.docs[k])}` : ""}</p>
+    <button type="button" class="btn wide" data-renew>Megújítás: új lejárat és ár</button>
+    <p class="hint">Vagy javítsd a mostani adatokat:</p>
     ${field("exp", "Lejárat dátuma", `type="date" value="${v(c.docs[k])}"`)}
-    ${c.docs[k] ? `<p class="hint num">${daysText(c.docs[k])}</p>` : ""}
     ${field("note", "Megjegyzés", `value="${v(c.notes[k])}" placeholder="pl. biztosító, kötvényszám"`)}
-    ${field("price", "Ha most újítottad meg: mennyibe került? (lej)", `type="number" inputmode="decimal" step="any" min="0"`)}
-    <p class="hint">Az ár bekerül a költségek közé. Hagyd üresen a dátumot, ha erre az autóra nem vonatkozik.</p>`,
-    f => {
-      c.docs[k] = f.exp; c.notes[k] = f.note.trim();
-      if (f.price) { c.costs.push({ id: uid(), cat: k, amount: Number(f.price), date: iso(today()), note: f.note.trim() }); toast("Lejárat és ár mentve."); }
-    },
+    <p class="hint">Hagyd üresen a dátumot, ha erre az autóra nem vonatkozik.</p>
+    ${historyHtml(hist)}`,
+    f => { c.docs[k] = f.exp; c.notes[k] = f.note.trim(); },
     c.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], k);
+  form.querySelector("[data-renew]").onclick = () => renewForm({
+    title: `${t[1]} megújítása`, sub: esc(c.name), old: c.docs[k], months: RENEW_MONTHS[k], presets: PRESETS[k], note: c.notes[k],
+    save: f => { c.docs[k] = f.exp; c.notes[k] = f.note; c.costs.push({ id: uid(), cat: k, amount: f.amount, date: f.paid, note: f.note }); }
+  });
 }
 
 function personalForm(k) {
   const t = PERSONAL_TYPES.find(d => d[0] === k), P = S.personal;
-  const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]}, személyes, nem autóhoz kötött</p>
+  const hist = P.costs.filter(x => x.cat === k).sort((a, b) => b.date.localeCompare(a.date));
+  const form = sheet(`<h2>${t[1]}</h2><p class="hint">${t[2]}, személyes${P.docs[k] ? `: ${fmtDate(P.docs[k])}, ${daysText(P.docs[k])}` : ""}</p>
+    <button type="button" class="btn wide" data-renew>Megújítás: új lejárat és ár</button>
+    <p class="hint">Vagy javítsd a mostani adatokat:</p>
     ${field("exp", "Lejárat dátuma", `type="date" value="${v(P.docs[k])}"`)}
-    ${P.docs[k] ? `<p class="hint num">${daysText(P.docs[k])}</p>` : ""}
-    ${field("note", "Megjegyzés", `value="${v(P.notes[k])}" placeholder="pl. kategóriák: B"`)}`,
+    ${field("note", "Megjegyzés", `value="${v(P.notes[k])}" placeholder="pl. kategóriák: B"`)}
+    ${historyHtml(hist)}`,
     f => { P.docs[k] = f.exp; P.notes[k] = f.note.trim(); },
     P.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([], "p:" + k, true);
+  form.querySelector("[data-renew]").onclick = () => renewForm({
+    title: `${t[1]} megújítása`, sub: "személyes", old: P.docs[k], months: RENEW_MONTHS[k], note: P.notes[k],
+    costHint: "Az ár a személyes kiadások közé kerül, nem egy autóhoz.",
+    save: f => { P.docs[k] = f.exp; P.notes[k] = f.note; P.costs.push({ id: uid(), cat: k, amount: f.amount, date: f.paid, note: f.note }); }
+  });
+}
+
+/* ---------- megújítás / csere ---------- */
+const RENEW_MONTHS = { rca: 12, rov: 12, itp: 24, tax: 12, license: 120, idcard: 120, passport: 120 };
+// gyors időtartam-gombok: [felirat, hónap, nap]
+const PRESETS = {
+  rca: [["1 hónap", 1], ["6 hónap", 6], ["12 hónap", 12]],
+  rov: [["30 nap", 0, 30], ["90 nap", 0, 90], ["12 hónap", 12]],
+  itp: [["1 év", 12], ["2 év", 24]],
+};
+function addPeriod(base, months, days) {
+  const d = parseDate(base);
+  if (months) d.setMonth(d.getMonth() + months);
+  if (days) d.setDate(d.getDate() + days);
+  return iso(d);
+}
+// a régi lejárattól számol, ha az még nem múlt el; különben mától
+const renewBase = old => old && parseDate(old) >= today() ? old : iso(today());
+
+function historyHtml(list) {
+  if (!list.length) return "";
+  return `<div class="hist"><span class="label">Korábbi megújítások</span>${list.slice(0, 5).map(x =>
+    `<div class="hrow num"><span>${fmtDate(x.date)}${x.note ? ", " + esc(x.note) : ""}</span><b>${fmtMoney(x.amount)}</b></div>`).join("")}</div>`;
+}
+
+function renewForm(o) {
+  const base = renewBase(o.old);
+  const form = sheet(`<h2>${esc(o.title)}</h2>
+    <p class="hint">${o.sub}${o.old ? `, eddig: ${fmtDate(o.old)}` : ""}</p>
+    ${o.presets ? `<div class="presets">${o.presets.map(([l, m, d]) => `<button type="button" class="toggle" data-m="${m || 0}" data-d="${d || 0}">${l}</button>`).join("")}</div>` : ""}
+    ${field("exp", "Új lejárat", `type="date" required value="${addPeriod(base, o.months)}"`)}
+    <div class="row2">${field("amount", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("paid", "Fizetve", `type="date" required value="${iso(today())}"`)}</div>
+    ${field("note", "Megjegyzés", `value="${v(o.note)}" placeholder="pl. biztosító neve"`)}
+    <p class="hint">${o.costHint || "Az ár magától bekerül a Napló / Költségek közé."}</p>`,
+    f => {
+      o.save({ exp: f.exp, amount: Number(f.amount), paid: f.paid, note: f.note.trim() });
+      toast(`Megújítva, új lejárat: ${fmtDate(f.exp)}`);
+    });
+  form.querySelectorAll("[data-m]").forEach(b => b.onclick = () => {
+    form.querySelector("#f-exp").value = addPeriod(base, Number(b.dataset.m), Number(b.dataset.d));
+    form.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  });
+  setTimeout(() => form.querySelector("#f-amount").focus(), 50);
+}
+
+function serviceSwapForm(c, k) {
+  const def = SERVICES[k];
+  sheet(`<h2>${def.t}: új csere</h2><p class="hint">${esc(c.name)}. Bekerül a szervizkönyvbe, és innen számolja a következőt.</p>
+    <div class="row2">${field("date", "Dátum", `type="date" required value="${iso(today())}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}</div>
+    <div class="row2">${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("place", "Szerviz neve", "")}</div>
+    ${field("title", "Mit csináltak", `value="${def.t}${k === "oil" ? " és szűrők" : ""}" required`)}`,
+    f => {
+      const km = Number(f.km);
+      c.log.push({ id: uid(), date: f.date, km, title: f.title.trim(), place: f.place.trim(), cost: Number(f.cost) });
+      c[k] = { ...c[k], date: f.date, km };
+      if (km > c.km) { c.km = km; c.kmDate = f.date; }
+      toast(`${def.t} rögzítve. A következő: ${fmtKm(km + Number(c[k].everyKm))}.`);
+    });
+}
+
+function customKmRenew(c, x) {
+  sheet(`<h2>${esc(x.title)}: megtörtént</h2><p class="hint">${esc(c.name)}, most ${fmtKm(c.km)}</p>
+    ${field("km", "Következő figyelmeztetés ennél a km-nél", `type="number" inputmode="numeric" required min="0" value="${Number(c.km) + Math.max(1000, Number(x.km) - Number(x.startKm ?? x.km))}"`)}
+    <div class="row2">${field("amount", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("paid", "Dátum", `type="date" required value="${iso(today())}"`)}</div>
+    <p class="hint">Az ár magától bekerül a Napló / Költségek közé.</p>`,
+    f => {
+      x.km = Number(f.km); x.startKm = Number(c.km);
+      c.costs.push({ id: uid(), cat: "other", amount: Number(f.amount), date: f.paid, note: x.title });
+      toast("Rögzítve.");
+    });
 }
 
 function customForm(c, x) {
@@ -554,6 +641,15 @@ function customForm(c, x) {
       if (isNew) c.custom.push({ id: uid(), ...data }); else Object.assign(x, data);
     },
     isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>${mode === "date" ? '<button type="button" class="btn ghost" data-cal>Naptárba</button>' : ""}`);
+  if (!isNew) {
+    const rb = document.createElement("button");
+    rb.type = "button"; rb.className = "btn wide"; rb.textContent = mode === "km" ? "Megtörtént: új km és ár" : "Megújítás: új dátum és ár";
+    form.querySelector("h2").after(rb);
+    rb.onclick = () => mode === "km" ? customKmRenew(c, x) : renewForm({
+      title: `${x.title}: megújítás`, sub: esc(c.name), old: x.date, months: 12, note: x.note,
+      save: f => { x.date = f.exp; x.note = f.note; c.costs.push({ id: uid(), cat: "other", amount: f.amount, date: f.paid, note: x.title }); }
+    });
+  }
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], "c:" + x.id);
   const sync = () => {
