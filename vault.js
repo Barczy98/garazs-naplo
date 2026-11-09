@@ -367,16 +367,25 @@ const Vault = (() => {
   // kép (pl. jogosítvány, személyi): kis előnézet egy lapon; a képre koppintva teljes képernyő
   function imageCard(f, blob) {
     const url = URL.createObjectURL(blob);
-    const form = sheet(`<h2>${esc(f.name)}</h2>
+    const el = $("#sheet");
+    el.innerHTML = `<div class="sheet-bg"><div class="sheet imgsheet" role="dialog" aria-label="${esc(f.name)}">
+      <div class="imghead"><div><h2>${esc(f.name)}</h2><p class="hint num">Kép, ${mb(f.size)}, ${fmtDate(iso(new Date(f.created)))}</p></div>
+        <button type="button" class="vw-btn light" data-x aria-label="Bezárás">${vic("close")}</button></div>
       <button type="button" class="imgcard" data-full aria-label="Megnyitás teljes képernyőn"><img src="${url}" alt="${esc(f.name)}"><span class="imgzoom">${vic("zoom")}</span></button>
-      <p class="hint num">Koppints a képre a teljes képernyős nézethez. Kép, ${mb(f.size)}, feltöltve: ${fmtDate(iso(new Date(f.created)))}</p>`, null,
-      `<button type="button" class="btn danger" data-del>Törlés</button><button type="button" class="btn ghost" data-ren>Átnevezés</button><button type="button" class="btn ghost" data-share>Megosztás</button>`);
+      <div class="vw-bar card-bar">
+        <button type="button" data-full>${vic("zoom")}<span>Nagyítás</span></button>
+        <button type="button" data-share>${vic("share")}<span>Megosztás</span></button>
+        <button type="button" data-ren>${vic("edit")}<span>Átnevezés</span></button>
+        <button type="button" data-del class="vw-del">${vic("trash")}<span>Törlés</span></button>
+      </div></div></div>`;
     const cleanup = () => URL.revokeObjectURL(url);
-    form.querySelector("[data-close]").textContent = "Bezárás";
-    form.querySelector("[data-full]").onclick = () => { closeSheet(); cleanup(); fullView(f, blob); };
-    form.querySelector("[data-share]").onclick = () => shareFile(f, blob);
-    form.querySelector("[data-ren]").onclick = () => { cleanup(); renameFile(f); };
-    form.querySelector("[data-del]").onclick = () => { cleanup(); deleteFile(f); };
+    const close = () => { closeSheet(); cleanup(); };
+    el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) close(); });
+    el.querySelector("[data-x]").onclick = close;
+    el.querySelectorAll("[data-full]").forEach(b => b.onclick = () => { close(); fullView(f, blob); });
+    el.querySelector("[data-share]").onclick = () => shareFile(f, blob);
+    el.querySelector("[data-ren]").onclick = () => { cleanup(); renameFile(f); };
+    el.querySelector("[data-del]").onclick = () => { cleanup(); deleteFile(f); };
   }
   function fullView(f, blob) {
     const isPdf = f.type === "application/pdf";

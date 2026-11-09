@@ -290,3 +290,9 @@ body.noscroll{overflow:hidden}
 .imgcard img{display:block;width:100%;max-height:34vh;object-fit:contain}
 .imgzoom{position:absolute;right:8px;bottom:8px;width:34px;height:34px;border-radius:50%;background:rgba(20,26,31,.75);display:grid;place-items:center}
 .imgzoom svg{width:18px;height:18px;stroke:#f4f6f2;fill:none;stroke-width:1.8}
+.imghead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.imghead > div{min-width:0}
+.imghead h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vw-btn.light{background:var(--paper);color:var(--ink);border:1px solid var(--rule)}
+.vw-btn.light svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.card-bar{grid-template-columns:repeat(4,1fr);border:0;border-radius:14px;padding:6px 4px;margin-top:2px}
