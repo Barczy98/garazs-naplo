@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -314,14 +314,16 @@ function renderFuel(c) {
   const st = fuelStats(c);
   const list = [...c.fuel].sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km);
   const year = String(today().getFullYear());
-  const yearCost = c.fuel.filter(f => f.date.startsWith(year)).reduce((s, f) => s + Number(f.cost || 0), 0);
+  const yearCost = c.fuel.filter(f => f.date.startsWith(year) && !f.covered).reduce((s, f) => s + Number(f.cost || 0), 0);
+  const yearCovered = c.fuel.filter(f => f.date.startsWith(year) && f.covered).reduce((s, f) => s + Number(f.cost || 0), 0);
   let h = `<section class="section"><h2 class="h">Tankolás <button class="btn" data-act="addfuel">Új tankolás</button></h2>`;
   if (list.length) h += `<div class="stats">
       <div><span class="big num">${st.avg != null ? fmtL(st.avg) : "–"}</span><span class="s">átlag l/100 km</span></div>
       <div><span class="big num">${st.last != null ? fmtL(st.last) : "–"}</span><span class="s">legutóbbi</span></div>
-      <div><span class="big num">${yearCost.toLocaleString("hu-HU")}</span><span class="s">lej ${year}-ban</span></div></div>`;
+      <div><span class="big num">${yearCost.toLocaleString("hu-HU")}</span><span class="s">saját lej ${year}-ban</span></div></div>
+    ${yearCovered ? `<p class="hint num">Céges kártyával fedezve ${year}-ban: ${fmtMoney(yearCovered)}. Ez nem számít bele a költségeidbe.</p>` : ""}`;
   h += `<div class="rows">${list.length ? list.map(f => `<button class="svc" data-fuel="${f.id}">
-      <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.full ? "" : ' <span class="tag">nem tele</span>'}</span>
+      <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.full ? "" : ' <span class="tag">nem tele</span>'}${f.covered ? ' <span class="tag covered">fedezve</span>' : ""}</span>
       <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${(f.cost / f.liters).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
       ${st.per[f.id] != null ? `<span class="cons num">${fmtL(st.per[f.id])}<small>l/100</small></span>` : ""}</button>`).join("")
     : `<div class="empty">Még nincs tankolás. A fogyasztást két tele tankolás között számolja, ezért mindig tele tankolás után érdemes beírni.</div>`}</div>
@@ -335,9 +337,10 @@ function fuelForm(c, f) {
     <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
     <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
-    <label class="check"><input type="checkbox" id="f-full" name="full" ${f.full ? "checked" : ""}><span>Tele tankoltam</span></label>`,
+    <label class="check"><input type="checkbox" id="f-full" name="full" ${f.full ? "checked" : ""}><span>Tele tankoltam</span></label>
+    <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Fedezve (céges kártyával fizettem, nem az én költségem)</span></label>`,
     d => {
-      const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: !!d.full };
+      const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: !!d.full, covered: !!d.covered };
       if (isNew) c.fuel.push({ id: uid(), ...data }); else Object.assign(f, data);
       if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
       if (isNew) toast("Tankolás mentve.");
@@ -349,14 +352,15 @@ function fuelForm(c, f) {
 /* ---------- költségek ---------- */
 function yearCosts(c, year) {
   const by = Object.fromEntries(Object.keys(COST_CATS).map(k => [k, 0]));
-  c.fuel.forEach(f => { if (f.date.startsWith(year)) by.fuel += Number(f.cost || 0); });
+  let covered = 0;
+  c.fuel.forEach(f => { if (f.date.startsWith(year)) { if (f.covered) covered += Number(f.cost || 0); else by.fuel += Number(f.cost || 0); } });
   c.log.forEach(e => { if (e.date.startsWith(year)) by.service += Number(e.cost || 0); });
   c.costs.forEach(x => { if (x.date.startsWith(year)) by[x.cat in by ? x.cat : "other"] += Number(x.amount || 0); });
   const total = Object.values(by).reduce((a, b) => a + b, 0);
   // megtett km az évben a tankolások és szervizek km-állásaiból (közelítés)
   const kms = [...c.fuel, ...c.log].filter(e => e.date.startsWith(year)).map(e => Number(e.km));
   const driven = kms.length > 1 ? Math.max(...kms) - Math.min(...kms) : 0;
-  return { by, total, driven };
+  return { by, total, driven, covered };
 }
 function costYears(c) {
   const ys = new Set([String(today().getFullYear())]);
@@ -372,7 +376,8 @@ function renderCosts(c) {
   const max = rows.length ? rows[0][1] : 1;
   let h = `<section class="section"><div class="years">${years.map(yr => `<button class="toggle" aria-pressed="${yr === costYear}" data-year="${yr}">${yr}</button>`).join("")}</div>
     <div class="costhead"><span class="big num">${fmtMoney(y.total)}</span>
-    <span class="hint num">${costYear}-ban összesen${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km (${fmtKm(y.driven)} alapján)` : ""}</span></div>`;
+    <span class="hint num">${costYear}-ban összesen${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km (${fmtKm(y.driven)} alapján)` : ""}</span>
+    ${y.covered ? `<span class="hint num">Céges kártyával fedezett tankolás: ${fmtMoney(y.covered)}, ez nincs benne.</span>` : ""}</div>`;
   h += rows.length ? `<div class="rows bars" role="table" aria-label="Költségek kategóriánként, ${costYear}">${rows.map(([k, val]) => `<div class="bar" role="row">
       <span class="bl" role="cell">${COST_CATS[k]}</span>
       <span class="bt" role="presentation"><span style="width:${Math.max(2, val / max * 100)}%"></span></span>

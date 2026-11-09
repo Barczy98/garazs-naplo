@@ -234,3 +234,4 @@ select{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1
 .hist{display:grid;gap:4px;border-top:1px solid var(--rule);padding-top:10px}
 .hrow{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted)}
 .hrow b{color:var(--ink);white-space:nowrap}
+.tag.covered{color:var(--ok);border-color:var(--ok)}
