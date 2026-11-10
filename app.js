@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.13.1";
+const APP_VERSION = "1.13.2";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -251,14 +251,16 @@ function renderWelcome() {
 }
 
 function renderHome(c, list) {
-  const urgent = [...list, ...personalItems()].filter(i => i.s === "bad" || i.s === "warn").sort(byUrgency);
+  const due = i => i.s === "bad" || i.s === "warn";
+  const urgent = [...list.filter(i => !i.service), ...personalItems()].filter(due).sort(byUrgency);
   const missing = list.filter(i => i.s === "none" && !i.service);
-  const services = list.filter(i => i.service);
+  // karbantartás csak akkor látszik, ha 30 napon belül esedékes vagy közel a csere km-e
+  const services = list.filter(i => i.service && due(i)).sort(byUrgency);
   const group = (title, body, extra = "") => `<section class="lgroup"><h2 class="lmonth">${title}${extra}</h2><div class="rows">${body}</div></section>`;
   let h = odometer(c) + staleBanner();
   h += `<div class="lgroups">`;
   h += group("Teendők", urgent.length ? urgent.map(i => lrowHtml(i, true)).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`);
-  h += group("Karbantartás", services.map(meterRowHtml).join(""));
+  if (services.length) h += group("Karbantartás", services.map(meterRowHtml).join(""));
   if (missing.length) h += group("Még nincs megadva", missing.map(lrowHtml).join(""));
   const last = [...c.log].sort((a, b) => b.date.localeCompare(a.date))[0];
   h += group("Utolsó szerviz", last ? `<button class="lrow" data-entry="${last.id}"><span class="lt"><span class="t">${esc(last.title)}</span>
@@ -368,8 +370,8 @@ function renderFuel(c) {
       <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.full ? "" : ' <span class="tag">nem tele</span>'}${f.covered ? ' <span class="tag covered">fedezve</span>' : ""}</span>
       <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${(f.cost / f.liters).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
       ${st.per[f.id] != null ? `<span class="cons num">${fmtL(st.per[f.id])}<small>l/100</small></span>` : ""}</button>`).join("")
-    : `<div class="empty">Még nincs tankolás. A fogyasztást két tele tankolás között számolja, ezért mindig tele tankolás után érdemes beírni.</div>`}</div>
-    <p class="hint">A fogyasztás két tele tankolás közötti km-ből és literből jön ki. Minden tankolás a km-órát is frissíti.</p></section>`;
+    : `<div class="empty">Még nincs tankolás. A második tankolás után már a fogyasztást is látod.</div>`}</div>
+    <p class="hint">A fogyasztást a két tankolás között megtett km-ből és a tankolt literből számolja. Minden tankolás a km-órát is frissíti.</p></section>`;
   return h;
 }
 
@@ -379,10 +381,9 @@ function fuelForm(c, f) {
     <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
     <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
-    <label class="check"><input type="checkbox" id="f-full" name="full" ${f.full ? "checked" : ""}><span>Tele tankoltam</span></label>
     <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Fedezve (céges kártyával fizettem, nem az én költségem)</span></label>`,
     d => {
-      const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: !!d.full, covered: !!d.covered };
+      const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: f.full !== false, covered: !!d.covered };
       if (isNew) c.fuel.push({ id: uid(), ...data }); else Object.assign(f, data);
       if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
       if (isNew) toast("Tankolás mentve.");
