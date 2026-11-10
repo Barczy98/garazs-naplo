@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.11.0";
+const APP_VERSION = "1.12.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -201,13 +201,23 @@ function plates(c) {
   }).join("")}<button class="plate add" data-act="addcar">+ autó</button></div>`;
 }
 
+// km-kijelző: nagy, vékony számok doboz nélkül; alatta csík a következő olajcseréig
 function odometer(c) {
-  const s = String(Math.max(0, Math.round(c.km)));
-  const digits = s.padStart(Math.max(6, s.length), "0").split("");
-  return `<button class="odo" data-act="km" aria-label="Km-óra: ${fmtKm(c.km)}. Koppints a frissítéshez.">
-    <span class="drums" aria-hidden="true">${digits.map((d, i) => `<span class="drum${i === digits.length - 1 ? " last" : ""}">${d}</span>`).join("")}<span class="unit">km</span></span>
-    <span class="odo-row"><span>${sinceText(c.kmDate)}</span><span class="btn">Km frissítése</span></span>
-  </button>`;
+  const oil = serviceInfo(c, "oil");
+  const since = sinceText(c.kmDate).replace("Frissítve: ", "frissítve ");
+  let below;
+  if (oil.s === "none") below = `<div class="kmeta"><button class="link" data-edit="oil">Add meg az utolsó olajcserét</button><span>${since}</span></div>`;
+  else {
+    const left = Number(c.oil.km) + Number(c.oil.everyKm) - Number(c.km);
+    const txt = left < 0 ? `Olajcsere <b class="c-bad">${fmtKm(-left)}-rel túllépve</b>` : `Olajcsere <b>${fmtKm(left)}</b> múlva`;
+    below = `<button class="ktrack" data-edit="oil" aria-label="Olajcsere részletei"><i class="${oil.s}" style="width:${Math.max(3, Math.round(oil.frac * 100))}%"></i></button>
+      <div class="kmeta"><span>${txt}</span><span>${since}</span></div>`;
+  }
+  return `<div class="kmbox">
+    <div class="ktop"><div class="kmnum num" aria-label="Km-óra: ${fmtKm(c.km)}">${Number(c.km).toLocaleString("hu-HU")}<small>km</small></div>
+      <button class="kupd" data-act="km" aria-label="Km-állás frissítése"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Km</button></div>
+    ${below}
+  </div>`;
 }
 
 const rowHtml = i => `<button class="r" data-edit="${esc(i.k)}">
@@ -298,7 +308,7 @@ function renderDocs(c, list) {
     <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
     <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
     <p class="hint">A Naptárba került eseménynél az iPhone ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
-    <section class="section"><h2 class="h">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(gaugeHtml).join("")}</div></section>
+    <section class="lgroup"><h2 class="lmonth">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(meterRowHtml).join("")}</div></section>
     <section class="section"><h2 class="h">Személyes <small>minden autónál ugyanaz</small></h2>
     ${timeline(personalItems())}
     <button class="btn quiet wide" data-act="calpersonal">Személyes lejáratok a Naptárba</button></section>`;
