@@ -356,3 +356,16 @@ body.noscroll{overflow:hidden}
 .kmeta{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted)}
 .kmeta b{color:var(--ink);font-weight:650}
 .kmeta .link{font-size:14px}
+
+/* Naptárba adás */
+.calsheet{gap:14px}
+.calrows .lrow{min-height:48px}
+.calwhen{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted);padding:0 2px}
+.calwhen svg{flex:none;width:20px;height:20px;stroke:var(--ink);fill:none;stroke-width:1.8;margin-top:1px}
+.calwhen .link{font-size:14px}
+.calwarn{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:14px;border:1.5px solid var(--signal);background:var(--warn-bg);color:var(--ink);text-align:left}
+.calwarn svg{flex:none;width:24px;height:24px;stroke:var(--warn);fill:none;stroke-width:1.8}
+.calwarn span{display:grid;gap:1px;min-width:0}
+.calwarn small{font-size:13px;color:var(--muted)}
+.steps{font-size:14px;color:var(--muted);line-height:1.45}
+.steps b{color:var(--ink)}

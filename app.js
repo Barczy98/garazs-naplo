@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.12.0";
+const APP_VERSION = "1.13.0";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -255,7 +255,7 @@ function renderHome(c, list) {
   const missing = list.filter(i => i.s === "none" && !i.service);
   const services = list.filter(i => i.service);
   const group = (title, body, extra = "") => `<section class="lgroup"><h2 class="lmonth">${title}${extra}</h2><div class="rows">${body}</div></section>`;
-  let h = odometer(c);
+  let h = odometer(c) + staleBanner();
   h += `<div class="lgroups">`;
   h += group("Teendők", urgent.length ? urgent.map(i => lrowHtml(i, true)).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`);
   h += group("Karbantartás", services.map(meterRowHtml).join(""));
@@ -303,7 +303,7 @@ function timeline(list) {
 }
 
 function renderDocs(c, list) {
-  return `<section class="section"><h2 class="h">Lejáratok <small>${esc(c.plate || "")}</small></h2>
+  return staleBanner() + `<section class="section"><h2 class="h">Lejáratok <small>${esc(c.plate || "")}</small></h2>
     ${timeline(list.filter(i => !i.service))}
     <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
     <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
@@ -503,7 +503,7 @@ function sheet(html, onSave, extraActions = "") {
     e.preventDefault();
     if (!form.checkValidity()) { form.reportValidity(); return; }
     const f = Object.fromEntries(new FormData(form));
-    if (onSave(f) !== false) { save(); closeSheet(); render(); }
+    if (onSave(f) !== false) { save(); closeSheet(); render(); checkStaleAfterSave(); }
   });
   el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) closeSheet(); });
   return form;
@@ -580,7 +580,7 @@ function docForm(c, k) {
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], k);
   form.querySelector("[data-renew]").onclick = () => renewForm({
-    title: `${t[1]} megújítása`, sub: esc(c.name), old: c.docs[k], months: RENEW_MONTHS[k], presets: PRESETS[k], note: c.notes[k],
+    title: `${t[1]} megújítása`, sub: esc(c.name), old: c.docs[k], months: RENEW_MONTHS[k], presets: PRESETS[k], note: c.notes[k], fromToday: k === "itp",
     save: f => { c.docs[k] = f.exp; c.notes[k] = f.note; c.costs.push({ id: uid(), cat: k, amount: f.amount, date: f.paid, note: f.note }); }
   });
 }
@@ -629,9 +629,10 @@ function historyHtml(list) {
 }
 
 function renewForm(o) {
-  const base = renewBase(o.old);
+  // ITP-nél az új érvényesség a vizsga napjától számít, a többinél a régi lejárattól
+  const base = o.fromToday ? iso(today()) : renewBase(o.old);
   const form = sheet(`<h2>${esc(o.title)}</h2>
-    <p class="hint">${o.sub}${o.old ? `, eddig: ${fmtDate(o.old)}` : ""}</p>
+    <p class="hint">${o.sub}${o.old ? `, eddig: ${fmtDate(o.old)}` : ""}${o.fromToday ? ". Az új érvényesség a vizsga napjától, mától számít." : ""}</p>
     ${o.presets ? `<div class="presets">${o.presets.map(([l, m, d]) => `<button type="button" class="toggle" data-m="${m || 0}" data-d="${d || 0}">${l}</button>`).join("")}</div>` : ""}
     ${field("exp", "Új lejárat", `type="date" required value="${addPeriod(base, o.months)}"`)}
     <div class="row2">${field("amount", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("paid", "Fizetve", `type="date" required value="${iso(today())}"`)}</div>
@@ -759,7 +760,8 @@ function buildIcs(events) {
     const start = parseDate(ev.date), end = parseDate(ev.date);
     end.setDate(end.getDate() + 1);
     const ymd = d => iso(d).replace(/-/g, "");
-    L.push("BEGIN:VEVENT", `UID:${ev.uid}@garazs-naplo`, `DTSTAMP:${stamp}`,
+    // állandó azonosító (dátum nélkül) és növekvő sorszám, hogy az iPhone frissítse a meglévő eseményt
+    L.push("BEGIN:VEVENT", `UID:${ev.uid}@garazs-naplo`, `DTSTAMP:${stamp}`, `SEQUENCE:${Math.floor(Date.now() / 60000) - 29000000}`,
       `DTSTART;VALUE=DATE:${ymd(start)}`, `DTEND;VALUE=DATE:${ymd(end)}`,
       `SUMMARY:${icsEscape(ev.title)}`, `DESCRIPTION:${icsEscape(ev.desc)}`, "TRANSP:TRANSPARENT");
     for (const n of S.settings.remind) {
@@ -778,7 +780,7 @@ function calendarEvents(cars, only, personal) {
   if (personal) for (const i of personalItems()) {
     if (only && i.k !== only) continue;
     if (!i.date || (!only && i.s === "bad" && dateStatus(i.date).d < -1)) continue;
-    evs.push({ uid: `personal-${i.k.slice(2)}-${i.date}`, date: i.date, title: `${i.t} lejár`, desc: `${i.sub}\nGarázs napló` });
+    evs.push({ uid: `personal-${i.k.slice(2)}`, date: i.date, title: `${i.t} lejár`, desc: `${i.sub}\nGarázs napló`, s: i.s });
   }
   for (const c of cars) {
     const label = c.plate ? `${c.name} (${c.plate})` : c.name;
@@ -787,18 +789,95 @@ function calendarEvents(cars, only, personal) {
       if (!i.date) continue; // a km szerinti emlékeztetőnek nincs dátuma, az csak az appban jelez
       if (!only && i.s === "bad" && dateStatus(i.date).d < -1) continue; // régen lejártat nem rakunk be
       const verb = SERVICES[i.k] ? "esedékes" : i.k.startsWith("c:") ? "" : "lejár";
-      evs.push({ uid: `${c.id}-${i.k.replace(":", "-")}-${i.date}`, date: i.date,
+      evs.push({ uid: `${c.id}-${i.k.replace(":", "-")}`, date: i.date, s: i.s,
         title: `${i.t}${verb ? " " + verb : ""} – ${c.name}`,
         desc: `${label}\n${SERVICES[i.k] ? SERVICES[i.k].t + ": " + i.sub : i.sub}\nGarázs napló` });
     }
   }
   return evs;
 }
-function exportCalendar(cars, only, personal) {
-  const evs = calendarEvents(cars, only, personal);
+/* ---------- Naptárba adás: előnézet, majd egy gombbal a fájl ---------- */
+function exportCalendar(cars, only, personal, keys) {
+  let evs = calendarEvents(cars, only, personal);
+  if (keys) evs = evs.filter(e => keys.has(e.uid));
   if (!evs.length) { toast("Nincs olyan dátum, amit a Naptárba lehetne tenni."); return; }
-  const name = only ? "garazs-emlekezteto.ics" : "garazs-lejaratok.ics";
-  deliverFile(name, "text/calendar", buildIcs(evs), true);
+  evs.sort((a, b) => a.date.localeCompare(b.date));
+  const r = [...S.settings.remind].sort((a, b) => b - a);
+  const when = r.length ? `${r.join(", ").replace(/, (\d+)$/, " és $1")} nappal előtte, és a lejárat napján, reggel 9-kor` : "a lejárat napján reggel 9-kor";
+  const sent = S.calSent || {};
+  const el = $("#sheet");
+  el.innerHTML = `<div class="sheet-bg"><div class="sheet calsheet" role="dialog" aria-label="Naptárba">
+    <div class="imghead"><div><h2>Naptárba</h2><p class="hint">${evs.length === 1 ? "1 esemény" : evs.length + " esemény"} kerül az iPhone Naptárába</p></div>
+      <button type="button" class="vw-btn light" data-x aria-label="Bezárás">${'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</button></div>
+    <div class="rows calrows">${evs.map(e => `<div class="lrow"><span class="ldot ${e.s || "ok"}"></span>
+      <span class="lt"><span class="t">${esc(e.title)}</span>${sent[e.uid] && sent[e.uid].date !== e.date ? `<span class="s">a Naptárban most: ${fmtDate(sent[e.uid].date)}</span>` : sent[e.uid] ? `<span class="s">már a Naptárban van</span>` : ""}</span>
+      <span class="ld num">${fmtDate(e.date)}<small>${daysText(e.date)}</small></span></div>`).join("")}</div>
+    <div class="calwhen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+      <span>Értesítés ${when}. <button type="button" class="link" data-remset>Módosítás</button></span></div>
+    <button type="button" class="btn wide" data-go>Hozzáadás a Naptárhoz</button>
+    <p class="hint">A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget.</p>
+  </div></div>`;
+  const close = () => closeSheet();
+  el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) close(); });
+  el.querySelector("[data-x]").onclick = close;
+  el.querySelector("[data-remset]").onclick = () => { close(); tab = "settings"; render(); window.scrollTo(0, 0); };
+  el.querySelector("[data-go]").onclick = () => {
+    deliverFile(only ? "garazs-emlekezteto.ics" : "garazs-lejaratok.ics", "text/calendar", buildIcs(evs), true);
+    S.calSent = S.calSent || {};
+    for (const e of evs) S.calSent[e.uid] = { date: e.date, title: e.title };
+    save(); close(); render();
+  };
+}
+
+/* ---------- a Naptárban maradt régi dátumok ---------- */
+// minden tétel jelenlegi dátuma az állandó azonosító szerint
+function currentCalDates() {
+  const m = {};
+  for (const e of calendarEvents(S.cars, null, true)) m[e.uid] = e.date;
+  for (const c of S.cars) for (const i of items(c)) if (i.date) m[`${c.id}-${i.k.replace(":", "-")}`] = i.date;
+  for (const i of personalItems()) if (i.date) m[`personal-${i.k.slice(2)}`] = i.date;
+  return m;
+}
+function staleCal() {
+  const sent = S.calSent || {}, cur = currentCalDates(), out = [];
+  const yesterday = iso(new Date(today().getTime() - DAY));
+  for (const [uid, x] of Object.entries(sent)) {
+    if (cur[uid] === x.date) continue;
+    if (x.date < yesterday) { delete sent[uid]; continue; } // a már elmúlt események nem zavarnak
+    out.push({ uid, old: x.date, title: x.title, now: cur[uid] || "" });
+  }
+  return out;
+}
+let staleShown = "";
+function staleBanner() {
+  const st = staleCal();
+  if (!st.length) return "";
+  return `<button class="calwarn" data-act="stale"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M10 14l4 4M14 14l-4 4"/></svg>
+    <span><b>Régi dátum maradt a Naptárban</b><small>${st.length === 1 ? esc(st[0].title) + ": " + fmtDate(st[0].old) : st.length + " esemény."} Koppints ide a javításhoz.</small></span></button>`;
+}
+function staleSheet() {
+  const st = staleCal();
+  if (!st.length) return;
+  staleShown = st.map(x => x.uid + x.old).join("|");
+  const form = sheet(`<h2>Régi dátum a Naptárban</h2>
+    <p class="hint">Ezek a dátumok megváltoztak, de az iPhone Naptárában még a régi szerepel, és arról is értesítést kapnál.</p>
+    <div class="rows calrows">${st.map(x => `<div class="lrow"><span class="ldot warn"></span><span class="lt"><span class="t">${esc(x.title)}</span>
+      <span class="s">Naptárban: ${fmtDate(x.old)}${x.now ? `, most: ${fmtDate(x.now)}` : ", már nincs dátuma"}</span></span></div>`).join("")}</div>
+    <div class="steps"><b>Így törlöd a régit:</b> Naptár app, menj a régi dátumra, koppints az eseményre, és legalul: Esemény törlése.</div>`, null,
+    `<button type="button" class="btn" data-done>Kitöröltem${st.some(x => x.now) ? ", jöhet az új" : ""}</button>`);
+  form.querySelector("[data-close]").textContent = "Később";
+  form.querySelector("[data-done]").onclick = () => {
+    const keys = new Set(st.filter(x => x.now).map(x => x.uid));
+    st.forEach(x => delete S.calSent[x.uid]);
+    save(); closeSheet(); render();
+    if (keys.size) exportCalendar(S.cars, null, true, keys);
+  };
+}
+// mentés után: ha egy már Naptárba tett dátum megváltozott, egyszer rögtön szólunk
+function checkStaleAfterSave() {
+  const st = staleCal();
+  const sig = st.map(x => x.uid + x.old).join("|");
+  if (st.length && sig !== staleShown) setTimeout(staleSheet, 350);
 }
 
 /* ---------- fájl átadás (Naptár, mentés) ---------- */
@@ -900,6 +979,7 @@ document.addEventListener("click", e => {
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c]); break;
+    case "stale": staleSheet(); break;
     case "calall": exportCalendar(S.cars, null, true); break;
     case "calpersonal": exportCalendar([], null, true); break;
     case "addfuel": fuelForm(c, null); break;
