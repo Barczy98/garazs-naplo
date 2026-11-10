@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.13.0";
+const APP_VERSION = "1.13.1";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -797,7 +797,7 @@ function calendarEvents(cars, only, personal) {
   return evs;
 }
 /* ---------- Naptárba adás: előnézet, majd egy gombbal a fájl ---------- */
-function exportCalendar(cars, only, personal, keys) {
+function exportCalendar(cars, only, personal, keys, update) {
   let evs = calendarEvents(cars, only, personal);
   if (keys) evs = evs.filter(e => keys.has(e.uid));
   if (!evs.length) { toast("Nincs olyan dátum, amit a Naptárba lehetne tenni."); return; }
@@ -807,14 +807,14 @@ function exportCalendar(cars, only, personal, keys) {
   const sent = S.calSent || {};
   const el = $("#sheet");
   el.innerHTML = `<div class="sheet-bg"><div class="sheet calsheet" role="dialog" aria-label="Naptárba">
-    <div class="imghead"><div><h2>Naptárba</h2><p class="hint">${evs.length === 1 ? "1 esemény" : evs.length + " esemény"} kerül az iPhone Naptárába</p></div>
+    <div class="imghead"><div><h2>${update ? "Frissítés a Naptárban" : "Naptárba"}</h2><p class="hint">${update ? "A dátum megváltozott. A Naptárban a régi esemény magától lecserélődik az újra." : (evs.length === 1 ? "1 esemény" : evs.length + " esemény") + " kerül az iPhone Naptárába"}</p></div>
       <button type="button" class="vw-btn light" data-x aria-label="Bezárás">${'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</button></div>
     <div class="rows calrows">${evs.map(e => `<div class="lrow"><span class="ldot ${e.s || "ok"}"></span>
-      <span class="lt"><span class="t">${esc(e.title)}</span>${sent[e.uid] && sent[e.uid].date !== e.date ? `<span class="s">a Naptárban most: ${fmtDate(sent[e.uid].date)}</span>` : sent[e.uid] ? `<span class="s">már a Naptárban van</span>` : ""}</span>
+      <span class="lt"><span class="t">${esc(e.title)}</span>${sent[e.uid] && sent[e.uid].date !== e.date ? `<span class="s">a Naptárban most: ${fmtDate(sent[e.uid].date)}, ez lecserélődik</span>` : sent[e.uid] ? `<span class="s">már a Naptárban van</span>` : ""}</span>
       <span class="ld num">${fmtDate(e.date)}<small>${daysText(e.date)}</small></span></div>`).join("")}</div>
     <div class="calwhen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
       <span>Értesítés ${when}. <button type="button" class="link" data-remset>Módosítás</button></span></div>
-    <button type="button" class="btn wide" data-go>Hozzáadás a Naptárhoz</button>
+    <button type="button" class="btn wide" data-go>${update ? "Frissítés a Naptárban" : "Hozzáadás a Naptárhoz"}</button>
     <p class="hint">A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget.</p>
   </div></div>`;
   const close = () => closeSheet();
@@ -852,26 +852,24 @@ let staleShown = "";
 function staleBanner() {
   const st = staleCal();
   if (!st.length) return "";
-  return `<button class="calwarn" data-act="stale"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M10 14l4 4M14 14l-4 4"/></svg>
-    <span><b>Régi dátum maradt a Naptárban</b><small>${st.length === 1 ? esc(st[0].title) + ": " + fmtDate(st[0].old) : st.length + " esemény."} Koppints ide a javításhoz.</small></span></button>`;
+  const upd = st.filter(x => x.now);
+  return `<button class="calwarn" data-act="stale"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M12 13v5M9.5 15.5L12 18l2.5-2.5"/></svg>
+    <span><b>${upd.length ? "Frissítsd a Naptárban" : "Régi dátum maradt a Naptárban"}</b><small>${st.length === 1 ? esc(st[0].title) + (st[0].now ? ", új dátum: " + fmtDate(st[0].now) : "") : st.length + " esemény dátuma megváltozott."} Koppints ide.</small></span></button>`;
 }
 function staleSheet() {
   const st = staleCal();
   if (!st.length) return;
   staleShown = st.map(x => x.uid + x.old).join("|");
-  const form = sheet(`<h2>Régi dátum a Naptárban</h2>
-    <p class="hint">Ezek a dátumok megváltoztak, de az iPhone Naptárában még a régi szerepel, és arról is értesítést kapnál.</p>
-    <div class="rows calrows">${st.map(x => `<div class="lrow"><span class="ldot warn"></span><span class="lt"><span class="t">${esc(x.title)}</span>
-      <span class="s">Naptárban: ${fmtDate(x.old)}${x.now ? `, most: ${fmtDate(x.now)}` : ", már nincs dátuma"}</span></span></div>`).join("")}</div>
-    <div class="steps"><b>Így törlöd a régit:</b> Naptár app, menj a régi dátumra, koppints az eseményre, és legalul: Esemény törlése.</div>`, null,
-    `<button type="button" class="btn" data-done>Kitöröltem${st.some(x => x.now) ? ", jöhet az új" : ""}</button>`);
+  const upd = st.filter(x => x.now), gone = st.filter(x => !x.now);
+  if (upd.length) return exportCalendar(S.cars, null, true, new Set(upd.map(x => x.uid)), true);
+  // a dátumot kitörölték: ezt az app nem tudja eltávolítani, csak kézzel lehet
+  const form = sheet(`<h2>Törölt dátum a Naptárban</h2>
+    <p class="hint">Ezeknek már nincs dátumuk az appban, de a Naptárban még szerepelnek.</p>
+    <div class="rows calrows">${gone.map(x => `<div class="lrow"><span class="ldot warn"></span><span class="lt"><span class="t">${esc(x.title)}</span><span class="s">Naptárban: ${fmtDate(x.old)}</span></span></div>`).join("")}</div>
+    <div class="steps"><b>Törlés:</b> Naptár app, koppints az eseményre, és legalul: Esemény törlése.</div>`, null,
+    `<button type="button" class="btn" data-done>Rendben</button>`);
   form.querySelector("[data-close]").textContent = "Később";
-  form.querySelector("[data-done]").onclick = () => {
-    const keys = new Set(st.filter(x => x.now).map(x => x.uid));
-    st.forEach(x => delete S.calSent[x.uid]);
-    save(); closeSheet(); render();
-    if (keys.size) exportCalendar(S.cars, null, true, keys);
-  };
+  form.querySelector("[data-done]").onclick = () => { gone.forEach(x => delete S.calSent[x.uid]); save(); closeSheet(); render(); };
 }
 // mentés után: ha egy már Naptárba tett dátum megváltozott, egyszer rögtön szólunk
 function checkStaleAfterSave() {
