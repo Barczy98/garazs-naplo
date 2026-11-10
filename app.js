@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.13.2";
+const APP_VERSION = "1.13.3";
 const KEY = "garazs-naplo-v1";
 const DAY = 864e5;
 
@@ -336,21 +336,26 @@ function renderService(c) {
 }
 
 /* ---------- tankolás ---------- */
-// fogyasztás: két tele tankolás között tankolt liter / megtett km
+// Fogyasztás tele tank nélkül: az első tankolás utáni összes liter / az első és az utolsó tankolás közötti km.
+// Egy-egy tankolásnál a tank szintje torzít, de sok tankolás után ez kiegyenlítődik.
+function consumption(fills) {
+  if (fills.length < 2) return null;
+  const km = fills[fills.length - 1].km - fills[0].km;
+  if (km < 300) return null; // túl rövid táv, még nem mond semmit
+  const liters = fills.slice(1).reduce((s, f) => s + Number(f.liters), 0);
+  return liters / km * 100;
+}
 function fuelStats(c) {
   const fills = [...c.fuel].sort((a, b) => a.km - b.km || a.date.localeCompare(b.date));
-  const per = {}; let L = 0, K = 0, last = null, prevFull = null, since = 0;
-  for (const f of fills) {
-    since += Number(f.liters);
-    if (f.full) {
-      if (prevFull && f.km > prevFull.km) {
-        const km = f.km - prevFull.km, cons = since / km * 100;
-        per[f.id] = cons; L += since; K += km; last = cons;
-      }
-      prevFull = f; since = 0;
-    }
-  }
-  return { per, avg: K ? L / K * 100 : null, last };
+  const gap = {};
+  fills.forEach((f, i) => { if (i) gap[f.id] = f.km - fills[i - 1].km; });
+  // utóbbi időszak: a végéről visszafelé legalább 1500 km-nyi tankolás
+  let start = fills.length - 1;
+  while (start > 0 && fills[fills.length - 1].km - fills[start].km < 1500) start--;
+  const recentFills = fills.slice(start);
+  const avg = consumption(fills);
+  const recent = recentFills.length < fills.length ? consumption(recentFills) : null;
+  return { gap, avg, recent, totalKm: fills.length > 1 ? fills[fills.length - 1].km - fills[0].km : 0 };
 }
 const fmtL = n => n.toLocaleString("hu-HU", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
@@ -363,15 +368,15 @@ function renderFuel(c) {
   let h = `<section class="section"><h2 class="h">Tankolás <button class="btn" data-act="addfuel">Új tankolás</button></h2>`;
   if (list.length) h += `<div class="stats">
       <div><span class="big num">${st.avg != null ? fmtL(st.avg) : "–"}</span><span class="s">átlag l/100 km</span></div>
-      <div><span class="big num">${st.last != null ? fmtL(st.last) : "–"}</span><span class="s">legutóbbi</span></div>
+      <div><span class="big num">${st.recent != null ? fmtL(st.recent) : "–"}</span><span class="s">utóbbi 1500 km</span></div>
       <div><span class="big num">${yearCost.toLocaleString("hu-HU")}</span><span class="s">saját lej ${year}-ban</span></div></div>
     ${yearCovered ? `<p class="hint num">Céges kártyával fedezve ${year}-ban: ${fmtMoney(yearCovered)}. Ez nem számít bele a költségeidbe.</p>` : ""}`;
   h += `<div class="rows">${list.length ? list.map(f => `<button class="svc" data-fuel="${f.id}">
-      <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.full ? "" : ' <span class="tag">nem tele</span>'}${f.covered ? ' <span class="tag covered">fedezve</span>' : ""}</span>
+      <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.covered ? ' <span class="tag covered">fedezve</span>' : ""}</span>
       <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${(f.cost / f.liters).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
-      ${st.per[f.id] != null ? `<span class="cons num">${fmtL(st.per[f.id])}<small>l/100</small></span>` : ""}</button>`).join("")
-    : `<div class="empty">Még nincs tankolás. A második tankolás után már a fogyasztást is látod.</div>`}</div>
-    <p class="hint">A fogyasztást a két tankolás között megtett km-ből és a tankolt literből számolja. Minden tankolás a km-órát is frissíti.</p></section>`;
+      ${st.gap[f.id] != null ? `<span class="cons num">+${st.gap[f.id].toLocaleString("hu-HU")}<small>km</small></span>` : ""}</button>`).join("")
+    : `<div class="empty">Még nincs tankolás. Pár tankolás után már a fogyasztást is látod.</div>`}</div>
+    <p class="hint">Nem kell tele tankolni: a fogyasztást az összes tankolt literből és a megtett km-ből becsüli, ezért minél több tankolás van beírva, annál pontosabb${st.totalKm ? ` (most ${fmtKm(st.totalKm)} alapján)` : ""}. Minden tankolás a km-órát is frissíti.</p></section>`;
   return h;
 }
 
