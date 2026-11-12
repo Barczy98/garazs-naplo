@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.14.0";
+const APP_VERSION = "1.14.1";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -825,9 +825,9 @@ function exportCalendar(cars, only, personal, keys, update) {
       ${ANDROID ? `<a class="gcal" href="${googleCalUrl(e)}" target="_blank" rel="noopener" data-g="${esc(e.uid)}" aria-label="${esc(e.title)} a Google Naptárba">Google</a>` : ""}</div>`).join("")}</div>
     <div class="calwhen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
       <span>Értesítés ${when}. <button type="button" class="link" data-remset>Módosítás</button></span></div>
-    ${ANDROID ? `<p class="hint"><b>Google Naptár:</b> koppints a sorok melletti Google gombra, eseményenként, és ott mentsd el.${update ? " A régit előbb töröld a naptárból, mert a Google Naptár nem cseréli le magától." : ""} A Google Naptár a saját alapértelmezett értesítését használja.</p>` : ""}
+    ${ANDROID ? `<p class="hint"><b>Pixel, Xiaomi és a legtöbb Android (Google Naptár):</b> koppints a sorok melletti Google gombra, eseményenként, és ott mentsd el.${update ? " A régit előbb töröld a naptárból, mert a Google Naptár nem cseréli le magától." : ""} A Google Naptár a saját alapértelmezett értesítését használja.</p>` : ""}
     <button type="button" class="btn wide" data-go>${ANDROID ? "Naptárfájl letöltése (Samsung Naptár)" : update ? "Frissítés a Naptárban" : "Hozzáadás a Naptárhoz"}</button>
-    <p class="hint">${ANDROID ? "Samsung telefonon nyisd meg a letöltött fájlt, és mentsd a naptárba. Itt az értesítések is beállítva érkeznek." : "A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget."}</p>
+    <p class="hint">${ANDROID ? "<b>Samsung Naptár:</b> nyisd meg a letöltött fájlt, és mentsd a naptárba. Így az értesítések is beállítva érkeznek." : "A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget."}</p>
   </div></div>`;
   const close = () => closeSheet();
   el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) close(); });
