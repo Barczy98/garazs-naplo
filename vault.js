@@ -5,7 +5,12 @@
      a Face ID-s passkey PRF-kimenetéből származtatott kulcs (HKDF) is lezárja.
    - Nyitott állapotban a kulcs csak a memóriában van; zárolás után eldobjuk. */
 const Vault = (() => {
-  const DB = "garazs-iratok", PIN_ITER = 400000, IDLE_MS = 2 * 60 * 1000;
+  const AND = (window.APP_CONFIG || {}).platform === "android";
+  // feloldás neve a két változatban, a magyar ragokkal együtt
+  const W = AND
+    ? { Name: "Ujjlenyomatos feloldás", the: "az ujjlenyomatos feloldás", The: "Az ujjlenyomatos feloldás", acc: "az ujjlenyomatos feloldást", ins: "ujjlenyomattal", os: "Android" }
+    : { Name: "Face ID", the: "a Face ID", The: "A Face ID", acc: "a Face ID-t", ins: "Face ID-val", os: "iOS" };
+  const DB = (window.APP_CONFIG || {}).vaultDb || "garazs-iratok", PIN_ITER = 400000, IDLE_MS = 2 * 60 * 1000;
   const enc = new TextEncoder(), dec = new TextDecoder();
   let meta = null;        // a lezárt kulcsok (betöltve induláskor, hogy a Face ID azonnal indulhasson)
   let master = null;      // nyitott állapotban a mesterkulcs
@@ -154,13 +159,13 @@ const Vault = (() => {
         master = await unwrapMaster(await prfKey(out), meta.face);
         await afterUnlock();
       })
-      .catch(e => { faceBusy = false; if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast("A Face ID most nem sikerült. Használd a PIN-kódot."); render(); });
+      .catch(e => { faceBusy = false; if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} most nem sikerült. Használd a PIN-kódot.`); render(); });
   }
 
   let pendingFace = null;
   function enableFace() {
     if (!master) return;
-    if (!faceSupported()) { toast("Ezen a telefonon a Face ID nem érhető el az app számára."); return; }
+    if (!faceSupported()) { toast(`Ezen a telefonon ${W.the} nem érhető el az app számára.`); return; }
     const prfSalt = rnd(32);
     navigator.credentials.create({ publicKey: {
       rp: { name: "Garázs napló", id: location.hostname },
@@ -171,37 +176,37 @@ const Vault = (() => {
       extensions: prfOptions(prfSalt) } })
       .then(async cred => {
         const ext = cred.getClientExtensionResults().prf;
-        if (!ext || ext.enabled === false) { toast("Ez az iOS verzió még nem támogatja a Face ID-t ehhez. Frissítsd az iOS-t, addig a PIN-kód működik."); return; }
+        if (!ext || ext.enabled === false) { toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. Frissítsd a rendszert, addig a PIN-kód működik.`); return; }
         const credId = new Uint8Array(cred.rawId);
         if (ext.results?.first) return saveFace(credId, prfSalt, ext.results.first);
         // Néhány iOS verzió csak egy második Face ID után adja ki a kulcsot.
         pendingFace = { credId, prfSalt };
         confirmFaceSheet();
       })
-      .catch(e => { if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast("A Face ID beállítása nem sikerült."); });
+      .catch(e => { if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} beállítása nem sikerült.`); });
   }
   function confirmFaceSheet() {
-    const form = sheet(`<h2>Face ID megerősítése</h2><p class="hint">Még egyszer nézz a telefonra, hogy a mappa Face ID-val nyitható legyen.</p>`, null,
-      `<button type="button" class="btn" data-ok>Megerősítés Face ID-val</button>`);
+    const form = sheet(`<h2>${W.Name}: megerősítés</h2><p class="hint">Még egyszer erősítsd meg, hogy a mappa ${W.ins} nyitható legyen.</p>`, null,
+      `<button type="button" class="btn" data-ok>Megerősítés ${W.ins}</button>`);
     form.querySelector("[data-ok]").onclick = () => {
       const { credId, prfSalt } = pendingFace;
       navigator.credentials.get({ publicKey: { challenge: rnd(32), rpId: location.hostname, userVerification: "required", timeout: 60000,
         allowCredentials: [{ type: "public-key", id: credId, transports: ["internal", "hybrid"] }], extensions: prfOptions(prfSalt) } })
         .then(cred => {
           const out = cred.getClientExtensionResults().prf?.results?.first;
-          if (!out) { closeSheet(); toast("Ez az iOS verzió még nem támogatja a Face ID-t ehhez. A PIN-kód működik."); return; }
+          if (!out) { closeSheet(); toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. A PIN-kód működik.`); return; }
           closeSheet(); return saveFace(credId, prfSalt, out);
         })
-        .catch(() => { toast("A Face ID megerősítése nem sikerült."); });
+        .catch(() => { toast(`${W.The} megerősítése nem sikerült.`); });
     };
   }
   async function saveFace(credId, prfSalt, out) {
     const w = await wrapMaster(await prfKey(out));
     meta.face = { credId, prfSalt, iv: w.iv, ct: w.ct };
     await putMeta(meta); pendingFace = null;
-    toast("Face ID bekapcsolva."); render();
+    toast(`${W.Name} bekapcsolva.`); render();
   }
-  async function disableFace() { meta.face = null; await putMeta(meta); toast("Face ID kikapcsolva. A mappa PIN-kóddal nyílik."); render(); }
+  async function disableFace() { meta.face = null; await putMeta(meta); toast(`${W.Name} kikapcsolva. A mappa PIN-kóddal nyílik.`); render(); }
 
   /* ---------- PDF megjelenítés (beépített pdf.js, internet nélkül is) ---------- */
   let pdfReady = null;
@@ -461,7 +466,7 @@ const Vault = (() => {
   const keypad = () => `<div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button type="button" data-k="${n}">${n}</button>`).join("")}
     <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="Utolsó számjegy törlése"><svg viewBox="0 0 24 24"><path d="M9 6h11v12H9l-6-6z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg></button></div>`;
   function newPinFlow(after) {
-    pinPad("Új PIN-kód", "Adj meg egy 4 jegyű kódot. Ezzel nyílik a mappa, ha a Face ID nem működik.", p1 => {
+    pinPad("Új PIN-kód", `Adj meg egy 4 jegyű kódot. Ezzel nyílik a mappa, ha ${W.the} nem működik.`, p1 => {
       pinPad("PIN-kód még egyszer", "Ellenőrzésképp írd be újra.", async p2 => {
         if (p1 !== p2) { toast("A két kód nem egyezik. Kezdjük újra."); return newPinFlow(after); }
         closeSheet(); await after(p1);
@@ -487,6 +492,7 @@ const Vault = (() => {
     lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
     face: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9v1.5M15 9v1.5M12 9v4h-1M9.5 16a3.5 3.5 0 0 0 5 0"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    finger: '<path d="M7 11a5 5 0 0 1 10 0v2a9 9 0 0 1-1.5 5"/><path d="M12 11v3a12 12 0 0 1-2 6.5"/><path d="M4.5 9a8 8 0 0 1 15 0M4 14v-1M9 11a3 3 0 0 1 6 0v2"/>',
     chev: '<path d="M9 6l6 6-6 6"/>',
     folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   };
@@ -497,7 +503,7 @@ const Vault = (() => {
     if (!isSetUp()) return `<h1 class="pagetitle">Iratok</h1>
       <div class="vpanel vintro">${svg("folder", "vbig")}
         <h2>Zárolt mappa a fontos papíroknak</h2>
-        <p>Jogosítvány, forgalmi, biztosítási kötvény: fotó vagy PDF. Titkosítva, csak ezen a telefonon, Face ID-val vagy PIN-kóddal nyílik.</p>
+        <p>Jogosítvány, forgalmi, biztosítási kötvény: fotó vagy PDF. Titkosítva, csak ezen a telefonon, ${W.ins} vagy PIN-kóddal nyílik.</p>
         <button class="btn" data-v="setup">Mappa beállítása</button></div>`;
 
     if (!isOpen()) return `<h1 class="pagetitle">Iratok</h1>
@@ -507,21 +513,21 @@ const Vault = (() => {
           <p class="vmsg">${busy ? "Nyitás..." : faceBusy ? "Nézz a telefonra..." : "Zárolva"}</p>
           <div class="pinbox" aria-label="PIN-kód, ${pin.length} számjegy beírva">${[0, 1, 2, 3].map(i => `<span class="${i < pin.length ? "on" : ""}"></span>`).join("")}</div>
         </div>
-        ${hasFace() ? `<button class="btn wide faceid" data-v="face">${svg("face")}Nyitás Face ID-val</button>` : ""}
+        ${hasFace() ? `<button class="btn wide faceid" data-v="face">${svg(AND ? "finger" : "face")}Nyitás ${W.ins}</button>` : ""}
         ${keypad()}
         <button class="link" data-v="forgot">Elfelejtettem a PIN-kódot</button>
       </div>`;
 
     let h = `<div class="vhead"><h1>Iratok</h1><button class="iconbtn" data-v="lock" aria-label="Mappa zárolása">${svg("lock")}</button></div>
       <p class="vstatus"><span class="vdot"></span>Nyitva. Bezáródik, ha 2 percig nem használod, vagy ha fél percnél tovább kilépsz.</p>`;
-    if (!hasFace() && faceSupported()) h += `<button class="vtip" data-v="faceon">${svg("face")}<span><b>Kapcsold be a Face ID-t</b><small>Így a mappa magától nyílik, nem kell PIN-kódot beírni.</small></span></button>`;
+    if (!hasFace() && faceSupported()) h += `<button class="vtip" data-v="faceon">${svg(AND ? "finger" : "face")}<span><b>Kapcsold be ${W.acc}</b><small>Így a mappa magától nyílik, nem kell PIN-kódot beírni.</small></span></button>`;
     h += `<label class="vadd"><input type="file" id="vfile" accept="image/*,application/pdf" multiple hidden>${svg("plus")}<span><b>Fájl hozzáadása</b><small>Fotó, kép vagy PDF</small></span></label>`;
     h += files.length ? `<div class="rows vlist">${files.map(f => `<button class="vrow" data-vf="${f.id}">
         <span class="vth">${f.thumbUrl ? `<img src="${f.thumbUrl}" alt="">` : `<span class="vpdf">PDF</span>`}</span>
         <span class="vtx"><b>${esc(f.name)}</b><small class="num">${f.type === "application/pdf" ? "PDF" : "Kép"}, ${mb(f.size)}, ${fmtDate(iso(new Date(f.created)))}</small></span>
         ${svg("chev", "vchev")}</button>`).join("")}</div>`
       : `<p class="hint vempty">Még nincs irat. Kezdd a jogosítvánnyal vagy az RCA kötvénnyel.</p>`;
-    h += `<div class="vfoot">${hasFace() ? `<span>Face ID bekapcsolva</span><button class="link" data-v="faceoff">Kikapcsolás</button>` : ""}
+    h += `<div class="vfoot">${hasFace() ? `<span>${W.Name} bekapcsolva</span><button class="link" data-v="faceoff">Kikapcsolás</button>` : ""}
       <button class="link" data-v="pin">PIN-kód módosítása</button></div>`;
     return h;
   }
@@ -541,15 +547,15 @@ const Vault = (() => {
       return;
     }
     switch (b.dataset.v) {
-      case "setup": newPinFlow(async p => { await setup(p); await afterUnlock(); if (faceSupported()) toast("Kész. Most kapcsold be a Face ID-t is."); }); break;
+      case "setup": newPinFlow(async p => { await setup(p); await afterUnlock(); if (faceSupported()) toast(`Kész. Most kapcsold be ${W.acc} is.`); }); break;
       case "face": unlockFace(); break;
       case "lock": lock(); break;
       case "faceon": enableFace(); break;
       case "faceoff": disableFace(); break;
       case "pin": newPinFlow(changePin); break;
       case "forgot": {
-        const form = sheet(`<h2>Elfelejtett PIN-kód</h2><p>A fájlok titkosítva vannak, ezért PIN-kód${hasFace() ? " vagy Face ID" : ""} nélkül nem lehet kinyitni őket.</p>
-          <p class="hint">${hasFace() ? "Próbáld a Face ID-t: nyitás után a mappában új PIN-kódot állíthatsz be. " : ""}Ha nincs más mód, törölheted a mappát az összes fájllal együtt, és újrakezdheted.</p>`, null,
+        const form = sheet(`<h2>Elfelejtett PIN-kód</h2><p>A fájlok titkosítva vannak, ezért PIN-kód${hasFace() ? " vagy " + W.Name.toLowerCase() : ""} nélkül nem lehet kinyitni őket.</p>
+          <p class="hint">${hasFace() ? `Próbáld ${W.acc}: nyitás után a mappában új PIN-kódot állíthatsz be. ` : ""}Ha nincs más mód, törölheted a mappát az összes fájllal együtt, és újrakezdheted.</p>`, null,
           `<button type="button" class="btn danger" data-wipe>Mappa törlése</button>`);
         form.querySelector("[data-wipe]").onclick = () => confirmIn(form, "Biztosan törlöd a mappát és benne az összes fájlt? Ez nem vonható vissza.", () => { wipe(); });
         break;

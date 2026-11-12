@@ -1,7 +1,8 @@
 // Offline működés: az app fájljait a telefon eltárolja.
 // Új verzió kiadásakor a CACHE nevét növelni kell.
-const CACHE = "garazs-v1.13.3";
-const FILES = ["./", "index.html", "style.css", "app.js", "vault.js", "manifest.webmanifest",
+const PREFIX = "garazs-" + new URL(self.registration.scope).pathname.replace(/[^a-z0-9]/gi, "") + "-";
+const CACHE = PREFIX + "v1.14.0";
+const FILES = ["./", "index.html", "config.js", "style.css", "app.js", "vault.js", "manifest.webmanifest",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png",
   "lib/pdfjs/pdf.min.js", "lib/pdfjs/pdf.worker.min.js",
   "fonts/archivo-latin-wdth-normal.woff2", "fonts/archivo-latin-ext-wdth-normal.woff2"];
@@ -10,7 +11,7 @@ self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => (k.startsWith(PREFIX) && k !== CACHE) || /^garazs-v\d/.test(k)).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 // Hálózat először (így a frissítések megjönnek), ha nincs net, a tárolt változat.

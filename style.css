@@ -369,3 +369,7 @@ body.noscroll{overflow:hidden}
 .calwarn small{font-size:13px;color:var(--muted)}
 .steps{font-size:14px;color:var(--muted);line-height:1.45}
 .steps b{color:var(--ink)}
+
+/* Android: Google Naptár gomb a sorokban */
+.gcal{flex:none;font-size:13px;font-weight:700;color:var(--ink);border:1.5px solid var(--rule);border-radius:999px;padding:5px 10px;text-decoration:none}
+.gcal.done{color:var(--ok);border-color:var(--ok)}

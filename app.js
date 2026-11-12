@@ -1,6 +1,10 @@
 "use strict";
-const APP_VERSION = "1.13.3";
-const KEY = "garazs-naplo-v1";
+const APP_VERSION = "1.14.0";
+const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
+const ANDROID = CFG.platform === "android";
+const KEY = CFG.storageKey;
+const PHONE = ANDROID ? "telefon" : "iPhone"; // szövegekben: "az iPhone" / "a telefon"
+const THE_PHONE = ANDROID ? "a telefon" : "az iPhone";
 const DAY = 864e5;
 
 const DOC_TYPES = [
@@ -309,7 +313,7 @@ function renderDocs(c, list) {
     ${timeline(list.filter(i => !i.service))}
     <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
     <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
-    <p class="hint">A Naptárba került eseménynél az iPhone ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
+    <p class="hint">A Naptárba került eseménynél ${THE_PHONE} ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
     <section class="lgroup"><h2 class="lmonth">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(meterRowHtml).join("")}</div></section>
     <section class="section"><h2 class="h">Személyes <small>minden autónál ugyanaz</small></h2>
     ${timeline(personalItems())}
@@ -478,7 +482,7 @@ function renderSettings() {
     <section class="lgroup"><h2 class="lmonth">Megjelenés</h2>
       <div class="segbar theme" role="radiogroup" aria-label="Megjelenés">${[["system", "Rendszer"], ["light", "Világos"], ["dark", "Sötét"]].map(([k, l]) =>
         `<button role="radio" aria-checked="${theme === k}" aria-pressed="${theme === k}" data-theme-set="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${T[k]}</svg>${l}</button>`).join("")}</div>
-      <p class="setnote">${theme === "system" ? "Az iPhone beállítását követi, este magától sötétre vált." : theme === "dark" ? "Mindig sötét." : "Mindig világos."}</p></section>
+      <p class="setnote">${theme === "system" ? (ANDROID ? "A telefon" : "Az iPhone") + " beállítását követi, este magától sötétre vált." : theme === "dark" ? "Mindig sötét." : "Mindig világos."}</p></section>
 
     ${group("Autók", S.cars.map(c => `<button class="lrow" data-caredit="${c.id}">
         <span class="miniplate"><i>RO</i><b>${esc(c.plate || "–")}</b></span>
@@ -539,7 +543,7 @@ function carForm(c) {
       const data = { name: f.name.trim(), plate: f.plate.trim().toUpperCase(), year: f.year, model: f.model.trim(), km: Number(f.km) };
       if (isNew) {
         const id = uid();
-        S.cars.push({ id, ...data, kmDate: iso(today()), docs: {}, notes: {}, log: [], custom: [],
+        S.cars.push({ id, ...data, kmDate: iso(today()), docs: {}, notes: {}, log: [], custom: [], fuel: [], costs: [],
           ...Object.fromEntries(SERVICE_KEYS.map(k => [k, { date: "", km: data.km, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths }])) });
         S.sel = id; tab = "docs";
         toast("Autó hozzáadva. Most add meg a lejáratokat.");
@@ -813,26 +817,42 @@ function exportCalendar(cars, only, personal, keys, update) {
   const sent = S.calSent || {};
   const el = $("#sheet");
   el.innerHTML = `<div class="sheet-bg"><div class="sheet calsheet" role="dialog" aria-label="Naptárba">
-    <div class="imghead"><div><h2>${update ? "Frissítés a Naptárban" : "Naptárba"}</h2><p class="hint">${update ? "A dátum megváltozott. A Naptárban a régi esemény magától lecserélődik az újra." : (evs.length === 1 ? "1 esemény" : evs.length + " esemény") + " kerül az iPhone Naptárába"}</p></div>
+    <div class="imghead"><div><h2>${update ? "Frissítés a Naptárban" : "Naptárba"}</h2><p class="hint">${update ? "A dátum megváltozott. A Naptárban a régi esemény magától lecserélődik az újra." : (evs.length === 1 ? "1 esemény" : evs.length + " esemény") + " kerül " + (ANDROID ? "a telefon naptárába" : "az iPhone Naptárába")}</p></div>
       <button type="button" class="vw-btn light" data-x aria-label="Bezárás">${'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'}</button></div>
     <div class="rows calrows">${evs.map(e => `<div class="lrow"><span class="ldot ${e.s || "ok"}"></span>
       <span class="lt"><span class="t">${esc(e.title)}</span>${sent[e.uid] && sent[e.uid].date !== e.date ? `<span class="s">a Naptárban most: ${fmtDate(sent[e.uid].date)}, ez lecserélődik</span>` : sent[e.uid] ? `<span class="s">már a Naptárban van</span>` : ""}</span>
-      <span class="ld num">${fmtDate(e.date)}<small>${daysText(e.date)}</small></span></div>`).join("")}</div>
+      <span class="ld num">${fmtDate(e.date)}<small>${daysText(e.date)}</small></span>
+      ${ANDROID ? `<a class="gcal" href="${googleCalUrl(e)}" target="_blank" rel="noopener" data-g="${esc(e.uid)}" aria-label="${esc(e.title)} a Google Naptárba">Google</a>` : ""}</div>`).join("")}</div>
     <div class="calwhen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
       <span>Értesítés ${when}. <button type="button" class="link" data-remset>Módosítás</button></span></div>
-    <button type="button" class="btn wide" data-go>${update ? "Frissítés a Naptárban" : "Hozzáadás a Naptárhoz"}</button>
-    <p class="hint">A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget.</p>
+    ${ANDROID ? `<p class="hint"><b>Google Naptár:</b> koppints a sorok melletti Google gombra, eseményenként, és ott mentsd el.${update ? " A régit előbb töröld a naptárból, mert a Google Naptár nem cseréli le magától." : ""} A Google Naptár a saját alapértelmezett értesítését használja.</p>` : ""}
+    <button type="button" class="btn wide" data-go>${ANDROID ? "Naptárfájl letöltése (Samsung Naptár)" : update ? "Frissítés a Naptárban" : "Hozzáadás a Naptárhoz"}</button>
+    <p class="hint">${ANDROID ? "Samsung telefonon nyisd meg a letöltött fájlt, és mentsd a naptárba. Itt az értesítések is beállítva érkeznek." : "A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget."}</p>
   </div></div>`;
   const close = () => closeSheet();
   el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) close(); });
   el.querySelector("[data-x]").onclick = close;
   el.querySelector("[data-remset]").onclick = () => { close(); tab = "settings"; render(); window.scrollTo(0, 0); };
+  // Google Naptár gombok: a megnyitott eseményt is Naptárba tettnek tekintjük
+  el.querySelectorAll("[data-g]").forEach(a => a.addEventListener("click", () => {
+    const e = evs.find(x => x.uid === a.dataset.g); if (!e) return;
+    S.calSent = S.calSent || {}; S.calSent[e.uid] = { date: e.date, title: e.title }; save();
+    a.textContent = "Kész"; a.classList.add("done");
+  }));
   el.querySelector("[data-go]").onclick = () => {
     deliverFile(only ? "garazs-emlekezteto.ics" : "garazs-lejaratok.ics", "text/calendar", buildIcs(evs), true);
     S.calSent = S.calSent || {};
     for (const e of evs) S.calSent[e.uid] = { date: e.date, title: e.title };
     save(); close(); render();
   };
+}
+
+// Google Naptár esemény-sablon link (Androidon a Google Naptár nem tud naptárfájlt megnyitni)
+function googleCalUrl(e) {
+  const d = parseDate(e.date), n = parseDate(e.date); n.setDate(n.getDate() + 1);
+  const ymd = x => iso(x).replace(/-/g, "");
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+    "&text=" + encodeURIComponent(e.title) + "&dates=" + ymd(d) + "/" + ymd(n) + "&details=" + encodeURIComponent(e.desc || "");
 }
 
 /* ---------- a Naptárban maradt régi dátumok ---------- */
