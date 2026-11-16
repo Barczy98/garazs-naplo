@@ -492,3 +492,9 @@ h1,.pagetitle{font-size:34px;font-weight:700;letter-spacing:-.025em;line-height:
 
 /* a felugró üzenet a sáv fölé kerüljön */
 .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px));border-radius:14px}
+
+/* kapcsolók kiválasztott része: sötét módban világosabb szürke, hogy ne olvadjon bele a sávba (mint az iOS saját kapcsolóin) */
+:root{--seg-sel:#ffffff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--seg-sel:#636366}}
+:root[data-theme="dark"]{--seg-sel:#636366}
+.segbar button[aria-pressed="true"],.seg input:checked + span{background:var(--seg-sel);color:var(--ink)}

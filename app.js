@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.1.1";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
