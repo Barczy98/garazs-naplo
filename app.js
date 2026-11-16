@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "1.14.1";
+const APP_VERSION = "2.0.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -69,6 +69,7 @@ function normalize(s) {
 let S;
 try { S = normalize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = emptyState(); }
 let tab = "home";
+let prevTab = "home"; // a Beállításokból ide térünk vissza
 let logView = "service";   // Napló fül: service | fuel | costs
 let costYear = String(new Date().getFullYear());
 
@@ -86,7 +87,7 @@ function applyTheme() {
   const root = document.documentElement;
   if (t === "light" || t === "dark") root.dataset.theme = t; else delete root.dataset.theme;
   const dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute("content", dark ? "#111613" : "#e9eee8"));
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute("content", dark ? "#000000" : "#f2f2f7"));
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 applyTheme();
@@ -172,6 +173,9 @@ const ICONS = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
   vault: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M10 13v-1a2 2 0 0 1 4 0v1M9.5 13h5v3.5h-5z"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  cal: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',
 };
 
 function render() {
@@ -182,15 +186,21 @@ function render() {
   else if (!c) h = renderWelcome();
   else {
     const list = items(c);
-    h += plates(c);
-    h += `<div class="carname"><div><h1>${esc(c.model || c.name)}</h1><p class="hint">${esc(c.name)}${c.year ? ", " + esc(c.year) : ""}</p></div>
-      <button class="iconbtn" data-act="editcar" aria-label="Autó adatainak szerkesztése"><svg viewBox="0 0 24 24">${ICONS.edit}</svg></button></div>`;
+    const circ = (act, ic, label) => `<button class="circ" data-act="${act}" aria-label="${label}"><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></button>`;
+    const extra = tab === "home" ? circ("editcar", "edit", "Autó adatainak szerkesztése")
+      : tab === "docs" ? circ("calcar", "cal", "Lejáratok a Naptárba")
+      : circ(logView === "fuel" ? "addfuel" : logView === "costs" ? "addcost" : "addlog", "plus", "Új bejegyzés");
+    const carLine = `${esc(c.model || c.name)}${c.year ? ", " + esc(c.year) : ""}`;
+    h += `<div class="topbar">${plates(c)}<div class="navbtns">${extra}${circ("settings", "settings", "Beállítások")}</div></div>`;
+    h += tab === "home"
+      ? `<div class="carname"><h1>${esc(c.model || c.name)}</h1><p class="hint">${esc(c.name)}${c.year ? ", " + esc(c.year) : ""}</p></div>`
+      : `<div class="carname"><h1>${tab === "docs" ? "Lejáratok" : "Napló"}</h1><p class="hint">${carLine}</p></div>`;
     if (tab === "home") h += renderHome(c, list);
     if (tab === "docs") h += renderDocs(c, list);
     if (tab === "log") h += renderLog(c);
   }
   $("#app").innerHTML = h;
-  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Napló"], ["vault", "Iratok"], ["settings", "Beállítások"]];
+  const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Napló"], ["vault", "Iratok"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) =>
     `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${l}</button>`).join("");
 }
@@ -246,7 +256,8 @@ function entryHtml(e) {
 }
 
 function renderWelcome() {
-  return `<div class="welcome">
+  return `<div class="topbar"><span></span><div class="navbtns"><button class="circ" data-act="settings" aria-label="Beállítások"><svg viewBox="0 0 24 24">${ICONS.settings}</svg></button></div></div>
+  <div class="welcome">
     <span class="plate big" aria-hidden="true"><span class="eu">RO</span><span class="nr">CJ 00 NEW</span></span>
     <h1>Add hozzá az első autót</h1>
     <p class="hint">Utána beírhatod az RCA, rovinieta, ITP és a többi lejáratot, és bejegyezheted a szervizeket. Minden adat csak ezen a telefonon tárolódik.</p>
@@ -267,29 +278,47 @@ function renderHome(c, list) {
   if (services.length) h += group("Karbantartás", services.map(meterRowHtml).join(""));
   if (missing.length) h += group("Még nincs megadva", missing.map(lrowHtml).join(""));
   const last = [...c.log].sort((a, b) => b.date.localeCompare(a.date))[0];
-  h += group("Utolsó szerviz", last ? `<button class="lrow" data-entry="${last.id}"><span class="lt"><span class="t">${esc(last.title)}</span>
+  h += group("Utolsó szerviz", last ? `<button class="lrow" data-entry="${last.id}">${rowIcon("wrench")}<span class="lt"><span class="t">${esc(last.title)}</span>
       <span class="s num">${fmtDate(last.date)}, ${fmtKm(last.km)}${last.place ? ", " + esc(last.place) : ""}</span></span>
       <span class="ld num">${last.cost ? fmtMoney(last.cost) : ""}</span>${CHEV}</button>` : `<div class="empty">Még nincs bejegyzés.</div>`);
-  h += group("Gyors rögzítés", `<button class="lrow" data-act="addfuel"><span class="lt"><span class="t">Új tankolás</span></span>${CHEV}</button>
-      <button class="lrow" data-act="addlog"><span class="lt"><span class="t">Új szervizbejegyzés</span></span>${CHEV}</button>
-      <button class="lrow" data-act="addcost"><span class="lt"><span class="t">Új kiadás</span></span>${CHEV}</button>`);
+  h += group("Gyors rögzítés", `<button class="lrow" data-act="addfuel">${rowIcon("fuel", "ok")}<span class="lt"><span class="t">Új tankolás</span></span>${CHEV}</button>
+      <button class="lrow" data-act="addlog">${rowIcon("wrench", "blue")}<span class="lt"><span class="t">Új szervizbejegyzés</span></span>${CHEV}</button>
+      <button class="lrow" data-act="addcost">${rowIcon("receipt")}<span class="lt"><span class="t">Új kiadás</span></span>${CHEV}</button>`);
   h += `</div>`;
   return h;
 }
 
+// sorok előtti ikonok tételtípus szerint
+const ROW_ICONS = {
+  rca: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/>',
+  rov: '<path d="M8 20L10 4M16 20L14 4M12 6v2M12 11v2M12 16v2"/>',
+  itp: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  tax: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  oil: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  timing: '<circle cx="8" cy="12" r="4"/><circle cx="17" cy="12" r="3"/><path d="M8 8l9 1M8 16l9-1"/>',
+  custom: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9z"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/>',
+  id: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="9" cy="12" r="2"/><path d="M14 10.5h4M14 13.5h3"/>',
+  wrench: '<path d="M14.5 6a4 4 0 0 0-5 5L4 16.5 7.5 20l5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z"/>',
+  fuel: '<path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M5 10h9"/><path d="M14 8l3 3v6a1.5 1.5 0 0 0 3 0V9l-2-2"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+};
+const rowIcon = (k, s = "gray") => {
+  const key = k.startsWith("p:") ? "id" : k.startsWith("c:") ? "custom" : k;
+  return `<span class="ico ${s}"><svg viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[key] || ROW_ICONS.custom}</svg></span>`;
+};
 const CHEV = '<svg class="lchev" viewBox="0 0 8 13" aria-hidden="true"><path d="M1 1l5.5 5.5L1 12"/></svg>';
 // egy lista sor: pötty, név, jobbra dátum és hátralévő napok (km-es tételnél a hátralévő km)
 function lrowHtml(i, showTag = false) {
   const right = i.service && i.s !== "none" ? esc(i.txt)
     : i.date ? `${shortDate(i.date)}<small>${daysText(i.date)}</small>` : "–";
   return `<button class="lrow" data-edit="${esc(i.k)}">
-      <span class="ldot ${i.s}"></span>
+      ${rowIcon(i.k, i.s)}
       <span class="lt"><span class="t">${esc(i.t)}${showTag === true && i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.sub)}</span></span>
       <span class="ld num ${i.s}">${right}</span>${CHEV}</button>`;
 }
 // karbantartás sor: név, hátralévő km, alatta vékony csík
 function meterRowHtml(i) {
-  return `<button class="lrow mrow" data-edit="${esc(i.k)}">
+  return `<button class="lrow mrow" data-edit="${esc(i.k)}">${rowIcon(i.k, i.s)}
       <span class="lt"><span class="mtop"><span class="t">${esc(i.t)}</span><span class="ld num ${i.s}">${i.s === "none" ? "nincs megadva" : esc(i.txt)}</span></span>
       ${i.frac == null ? `<span class="s">${esc(i.sub)}</span>` : `<span class="meter"><i class="${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></i></span><span class="s">${esc(i.sub)}</span>`}</span>${CHEV}</button>`;
 }
@@ -309,7 +338,7 @@ function timeline(list) {
 }
 
 function renderDocs(c, list) {
-  return staleBanner() + `<section class="section"><h2 class="h">Lejáratok <small>${esc(c.plate || "")}</small></h2>
+  return staleBanner() + `<section class="section">
     ${timeline(list.filter(i => !i.service))}
     <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
     <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
@@ -477,7 +506,8 @@ function renderSettings() {
   };
   const check = '<svg class="chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const group = (title, body, note = "") => `<section class="lgroup"><h2 class="lmonth">${title}</h2><div class="rows">${body}</div>${note ? `<p class="setnote">${note}</p>` : ""}</section>`;
-  return `<h1 class="pagetitle">Beállítások</h1>
+  return `<div class="topbar"><span></span><div class="navbtns"><button class="circ" data-act="closeset" aria-label="Bezárás"><svg viewBox="0 0 24 24">${ICONS.close}</svg></button></div></div>
+  <h1 class="pagetitle">Beállítások</h1>
   <div class="setlist">
     <section class="lgroup"><h2 class="lmonth">Megjelenés</h2>
       <div class="segbar theme" role="radiogroup" aria-label="Megjelenés">${[["system", "Rendszer"], ["light", "Világos"], ["dark", "Sötét"]].map(([k, l]) =>
@@ -1003,6 +1033,8 @@ document.addEventListener("click", e => {
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c]); break;
+    case "settings": prevTab = tab === "settings" ? prevTab : tab; tab = "settings"; render(); window.scrollTo(0, 0); break;
+    case "closeset": tab = prevTab || "home"; render(); window.scrollTo(0, 0); break;
     case "stale": staleSheet(); break;
     case "calall": exportCalendar(S.cars, null, true); break;
     case "calpersonal": exportCalendar([], null, true); break;

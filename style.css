@@ -373,3 +373,122 @@ body.noscroll{overflow:hidden}
 /* Android: Google Naptár gomb a sorokban */
 .gcal{flex:none;font-size:13px;font-weight:700;color:var(--ink);border:1.5px solid var(--rule);border-radius:999px;padding:5px 10px;text-decoration:none}
 .gcal.done{color:var(--ok);border-color:var(--ok)}
+
+/* =====================================================================
+   2.0: modern iPhone (iOS 26) réteg. Ez a rész felülírja a fentieket:
+   rendszerbetű, visszafogott színek, kerekebb listák, lebegő üveg alsó sáv.
+   ===================================================================== */
+:root{
+  --paper:#f2f2f7; --card:#ffffff; --ink:#000000; --muted:#6c6c70; --rule:#e3e3e8;
+  --signal:#9a6b12; --signal-ink:#ffffff;            /* tompa borostyán kiemelés */
+  --bad:#b5483f; --bad-bg:#f6e6e4; --warn:#a0681f; --warn-bg:#f6ecdd; --ok:#3f7d5c; --ok-bg:#e3efe8;
+  --blue:#4a6a93; --gray:#7c8188; --fill:rgba(120,120,128,.12);
+  --glass:rgba(255,255,255,.62); --glass-edge:rgba(255,255,255,.75); --glass-sel:rgba(0,0,0,.06);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#000000; --card:#1c1c1e; --ink:#ffffff; --muted:#98989f; --rule:#38383a;
+  --signal:#d9b26a; --signal-ink:#1b1400;
+  --bad:#e08a83; --bad-bg:#3a1f1d; --warn:#d9a466; --warn-bg:#3a2d1c; --ok:#86bc9c; --ok-bg:#1d3127;
+  --blue:#93add0; --gray:#a0a5ab; --fill:rgba(120,120,128,.24);
+  --glass:rgba(44,44,46,.55); --glass-edge:rgba(255,255,255,.14); --glass-sel:rgba(255,255,255,.1);
+  --stamp:#93add0; --bar:#93add0;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#000000; --card:#1c1c1e; --ink:#ffffff; --muted:#98989f; --rule:#38383a;
+  --signal:#d9b26a; --signal-ink:#1b1400;
+  --bad:#e08a83; --bad-bg:#3a1f1d; --warn:#d9a466; --warn-bg:#3a2d1c; --ok:#86bc9c; --ok-bg:#1d3127;
+  --blue:#93add0; --gray:#a0a5ab; --fill:rgba(120,120,128,.24);
+  --glass:rgba(44,44,46,.55); --glass-edge:rgba(255,255,255,.14); --glass-sel:rgba(255,255,255,.1);
+  --stamp:#93add0; --bar:#93add0;
+  color-scheme:dark}
+body{font-size:17px;line-height:1.3;-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+*{font-stretch:normal !important}
+.app{padding-bottom:calc(118px + env(safe-area-inset-bottom,0px));gap:14px}
+h1,.pagetitle{font-size:34px;font-weight:700;letter-spacing:-.025em;line-height:1.12}
+.hint{font-size:15px}
+
+/* fejléc: rendszámtáblák balra, kerek gombok jobbra */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:4px}
+.topbar .plates{flex:1;min-width:0}
+.navbtns{display:flex;gap:10px;flex:none}
+.circ{width:38px;height:38px;border-radius:50%;border:0;background:var(--fill);color:var(--ink);display:grid;place-items:center}
+.circ svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9}
+.plate{font-size:14px}
+.plate[aria-pressed="true"]{outline:none;box-shadow:0 0 0 2px var(--paper),0 0 0 3.5px var(--signal)}
+.carname{display:block;margin-top:-2px}
+.carname .hint{font-size:17px;margin-top:2px}
+.vhead .iconbtn{width:38px;height:38px;border-radius:50%;border:0;background:var(--fill);color:var(--ink)}
+
+/* csoportcímek: nagyobb, félkövér, mint az iOS 26-ban */
+.lmonth,.h{font-size:22px !important;font-weight:700 !important;color:var(--ink) !important;letter-spacing:-.015em;padding:0 4px !important;margin:6px 0 2px !important}
+.lmonth::first-letter{text-transform:none}
+.h small{font-size:15px;font-weight:400;color:var(--muted)}
+.lgroups{gap:20px}
+
+/* csoportos listák: nagy lekerekítés, nincs keret */
+.rows,.card,.stats > div,.settings .card{border:0 !important;border-radius:24px !important}
+.lrow{min-height:58px;gap:12px;padding:10px 14px 10px 16px;border-top:0;position:relative}
+.lrow + .lrow::before,.svc + .svc::before,.r + .r::before,.gauge + .gauge::before{content:"";position:absolute;top:0;right:0;left:58px;border-top:.5px solid var(--rule)}
+.svc,.r,.gauge{position:relative;border-top:0 !important}
+.svc + .svc::before{left:16px}
+.lrow .t,.svc .t{font-weight:400;font-size:17px}
+.lrow .s,.svc .s{font-size:13px}
+.ld{font-size:15px;font-weight:400 !important}
+.ld small{font-size:13px;font-weight:400 !important}
+.ld.bad,.ld.bad small{color:var(--bad)} .ld.warn,.ld.warn small{color:var(--warn)}
+.lchev{opacity:.45;width:7px;height:12px}
+
+/* sor ikonok: halvány háttér, színes jel */
+.ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;--c:var(--gray);color:var(--c);background:color-mix(in srgb,var(--c) 15%,transparent)}
+.ico svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9}
+.ico.bad{--c:var(--bad)} .ico.warn{--c:var(--warn)} .ico.ok{--c:var(--ok)} .ico.blue{--c:var(--blue)} .ico.none,.ico.gray{--c:var(--gray)}
+
+/* km-kijelző rendszerbetűvel */
+.kmnum{font-size:clamp(44px,13.5vw,58px);font-weight:200;letter-spacing:-.035em;min-width:0}
+.ktop{min-width:0}
+.kmbox{min-width:0;max-width:100%}
+.kmnum small{font-size:20px;font-weight:500;letter-spacing:0}
+.kupd{border:0;background:var(--fill);font-size:15px;font-weight:600;padding:8px 14px 8px 11px}
+.ktrack{height:6px;border-radius:3px;background:var(--fill)}
+.ktrack i{border-radius:3px}
+.kmeta{font-size:13px}
+
+/* gombok */
+.btn{border-radius:14px;font-weight:600;font-size:17px;padding:12px 16px}
+.btn.quiet,.btn.ghost{border:0;background:var(--fill);color:var(--ink)}
+.btn.danger{border:0;background:var(--bad-bg);color:var(--bad)}
+.link{color:var(--signal);text-decoration:none;font-weight:400}
+.plate.add{border-style:dashed}
+
+/* kapcsolók (Napló nézetek, megjelenés) */
+.segbar{background:var(--fill);border:0;border-radius:999px;padding:3px}
+.segbar button{border-radius:999px;color:var(--ink);font-weight:600;font-size:14px}
+.segbar button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.toggle[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+/* számok, csempék */
+.big{font-weight:600;letter-spacing:-.02em}
+.stats > div{padding:14px 16px}
+.costhead .big{font-weight:700}
+
+/* lapok (ablakok) */
+.sheet{border-radius:28px 28px 0 0;background:var(--card)}
+.sheet h2{font-size:22px;font-weight:700}
+.field input,.field select,select{background:var(--fill);border:0;border-radius:12px}
+.label{font-size:13px;font-weight:500}
+
+/* lebegő üveg alsó sáv */
+.tabs{left:max(14px,env(safe-area-inset-left,0px));right:max(14px,env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  padding:0;border:0;border-radius:999px;background:var(--glass);
+  -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+  box-shadow:inset 0 0 0 .7px var(--glass-edge),inset 0 1px 0 var(--glass-edge),0 10px 30px rgba(0,0,0,.18)}
+.tabs-in{max-width:none;grid-template-columns:repeat(4,1fr);gap:2px;padding:5px}
+.tab{border-radius:999px;padding:8px 0 7px;font-size:11px;font-weight:600;letter-spacing:0;color:var(--ink);gap:3px}
+.tab svg{width:24px;height:24px}
+.tab::after{display:none}
+.tab[aria-selected="true"]{background:var(--glass-sel);color:var(--signal)}
+@media (min-width:560px){.tabs{left:50%;right:auto;width:480px;transform:translateX(-50%)}}
+
+/* a felugró üzenet a sáv fölé kerüljön */
+.toast{bottom:calc(96px + env(safe-area-inset-bottom,0px));border-radius:14px}
