@@ -20,7 +20,7 @@ Platformfüggő viselkedés az `ANDROID` (app.js) és `AND` (vault.js) kapcsoló
 
 ## Eddigi döntések (a felhasználó kérése szerint)
 - Lejáratok: RCA, rovinieta, ITP, gépjárműadó. CASCO, elsősegélycsomag, tűzoltó készülék NINCS.
-- Személyes lejáratok (jogosítvány, személyi, útlevél) autótól függetlenül.
+- Személyes lejáratok (jogosítvány, személyi, útlevél) AUTÓNKÉNT külön (`c.pdocs`, `c.pnotes`), mint a többi adat. (2.1-ben a régi közös adatok az első autóhoz kerültek.)
 - Karbantartás: olajcsere és vezérműszíj, km vagy idő (amelyik előbb jön). Áttekintésen csak akkor látszik, ha esedékes.
 - Tankolás: nincs „tele tank” pipa; a fogyasztás becslés (összes liter / megtett km). „Fedezve” = céges kártya, nem számít a saját költségbe.
 - ITP megújítás a mai naptól számol, a többi a régi lejárattól.
