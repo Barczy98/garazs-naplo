@@ -92,9 +92,11 @@ const Vault = (() => {
   function autoFace() { if (tab === "vault" && hasFace() && !master && !faceBusy) unlockFace(); }
   ["click", "touchstart", "keydown"].forEach(e => document.addEventListener(e, () => { if (master) touch(); }, { passive: true }));
 
+  let pendingCb = null;
   async function afterUnlock() {
     pin = ""; failReset();
     await loadList(); touch(); render();
+    if (pendingCb) { const cb = pendingCb; pendingCb = null; cb(); }
   }
   async function loadList() {
     const recs = await allFiles();
@@ -159,7 +161,11 @@ const Vault = (() => {
         master = await unwrapMaster(await prfKey(out), meta.face);
         await afterUnlock();
       })
-      .catch(e => { faceBusy = false; if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} most nem sikerült. Használd a PIN-kódot.`); render(); });
+      .catch(e => {
+        faceBusy = false;
+        if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} most nem sikerült. Használd a PIN-kódot.`);
+        if (pendingCb) pinFlow(); else render();
+      });
   }
 
   let pendingFace = null;
@@ -587,5 +593,53 @@ const Vault = (() => {
     db.close(); meta = await getMeta();
   }
 
-  return { init, html, unlockFace, hasFace, isOpen, isSetUp, exportData, importData };
+  /* ---------- irat csatolása a lejáratokhoz (máshonnan, nem az Iratok fülről) ---------- */
+  // a mappa megnyitása, majd a művelet; a Face ID-t a koppintásból kell indítani, ezért nincs előtte await
+  function ensureOpen(cb) {
+    if (!isSetUp()) { toast("Előbb állítsd be az Iratok mappát az Iratok fülön."); return; }
+    if (master) { touch(); cb(); return; }
+    pendingCb = cb;
+    if (hasFace()) unlockFace(); else pinFlow();
+  }
+  function pinFlow() {
+    pinPad("Iratok feloldása", "Írd be a mappa PIN-kódját.", async p => {
+      const f = failState();
+      if (f.until > Date.now()) { closeSheet(); pendingCb = null; toast(`Túl sok hibás próbálkozás. Várj ${Math.ceil((f.until - Date.now()) / 1000)} másodpercet.`); return; }
+      try {
+        master = await unwrapMaster(await pinKey(p, meta.salt, meta.iter), meta.pin);
+        closeSheet(); await afterUnlock();
+      } catch (e) {
+        const s2 = failAdd(); closeSheet(); pendingCb = null;
+        toast(s2.n >= 5 ? "Hibás PIN-kód. Kis várakozás következik." : "Hibás PIN-kód.");
+      }
+    });
+  }
+  // irat kiválasztása (vagy új feltöltése) a mappából
+  function pick(cb) {
+    ensureOpen(() => {
+      const form = sheet(`<h2>Irat csatolása</h2>
+        ${files.length ? `<div class="rows vlist">${files.map(f => `<button type="button" class="vrow" data-pick="${f.id}">
+          <span class="vth">${f.thumbUrl ? `<img src="${f.thumbUrl}" alt="">` : `<span class="vpdf">PDF</span>`}</span>
+          <span class="vtx"><b>${esc(f.name)}</b><small class="num">${f.type === "application/pdf" ? "PDF" : "Kép"}, ${mb(f.size)}</small></span></button>`).join("")}</div>`
+          : `<p class="hint">Az Iratok mappa még üres. Tölts fel egy fotót vagy PDF-et.</p>`}`, null,
+        `<label class="btn ghost">Új fájl feltöltése<input type="file" id="pickfile" accept="image/*,application/pdf" hidden></label>`);
+      form.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { closeSheet(); cb(b.dataset.pick); });
+      form.querySelector("#pickfile").onchange = async e => {
+        const list = [...e.target.files]; if (!list.length) return;
+        closeSheet(); await addFiles(list);
+        const newest = files.reduce((a, b) => (!a || b.created > a.created ? b : a), null);
+        if (newest) cb(newest.id);
+      };
+    });
+  }
+  // csatolt irat megnyitása; ha már nincs meg, szól
+  function openFile(id, onMissing) {
+    ensureOpen(() => {
+      if (!files.some(f => f.id === id)) { if (onMissing) onMissing(); return; }
+      view(id);
+    });
+  }
+  const fileName = id => (master && files.find(f => f.id === id)?.name) || "";
+
+  return { init, html, unlockFace, hasFace, isOpen, isSetUp, exportData, importData, pick, openFile, fileName };
 })();

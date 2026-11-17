@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -54,7 +54,7 @@ function normalize(s) {
   s.cars.forEach(c => {
     c.docs = c.docs || {}; c.notes = c.notes || {}; c.log = c.log || []; c.custom = c.custom || [];
     c.fuel = c.fuel || []; c.costs = c.costs || [];
-    c.pdocs = c.pdocs || {}; c.pnotes = c.pnotes || {};
+    c.pdocs = c.pdocs || {}; c.pnotes = c.pnotes || {}; c.links = c.links || {};
     // a saját emlékeztetőként felvett jogosítvány átkerül a személyes lejáratok közé
     c.custom = c.custom.filter(x => {
       if (x.mode !== "km" && x.date && /jogos/i.test(x.title || "") && !c.pdocs.license) {
@@ -155,11 +155,12 @@ function items(c) {
   }
   c.custom.forEach(x => list.push(x.mode === "km" ? { k: "c:" + x.id, t: x.title, ...kmStatus(c, x), service: true }
     : { k: "c:" + x.id, t: x.title, sub: x.note || "saját emlékeztető", date: x.date, ...dateStatus(x.date) }));
+  for (const i of list) i.att = !!(c.links || {})[i.k];
   return list;
 }
 function personalItems(c) {
   if (!c) return [];
-  return PERSONAL_TYPES.map(([k, t, sub]) => ({ k: "p:" + k, t, sub: c.pnotes[k] || sub, date: c.pdocs[k], personal: true, ...dateStatus(c.pdocs[k]) }));
+  return PERSONAL_TYPES.map(([k, t, sub]) => ({ k: "p:" + k, t, sub: c.pnotes[k] || sub, date: c.pdocs[k], personal: true, att: !!(c.links || {})["p:" + k], ...dateStatus(c.pdocs[k]) }));
 }
 function daysText(date) {
   const d = Math.round((parseDate(date) - today()) / DAY);
@@ -387,6 +388,7 @@ const rowIcon = (k, s = "gray") => {
   const key = k.startsWith("p:") ? "id" : k.startsWith("c:") ? "custom" : k;
   return `<span class="ico ${s}"><svg viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[key] || ROW_ICONS.custom}</svg></span>`;
 };
+const CLIP = '<svg class="clip" viewBox="0 0 24 24" aria-label="csatolt irat"><path d="M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg>';
 const CHEV = '<svg class="lchev" viewBox="0 0 8 13" aria-hidden="true"><path d="M1 1l5.5 5.5L1 12"/></svg>';
 // egy lista sor: pötty, név, jobbra dátum és hátralévő napok (km-es tételnél a hátralévő km)
 function lrowHtml(i, showTag = false) {
@@ -394,7 +396,7 @@ function lrowHtml(i, showTag = false) {
     : i.date ? `${shortDate(i.date)}<small>${daysText(i.date)}</small>` : "–";
   return `<button class="lrow" data-edit="${esc(i.k)}">
       ${rowIcon(i.k, i.s)}
-      <span class="lt"><span class="t">${esc(i.t)}${showTag === true && i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.sub)}</span></span>
+      <span class="lt"><span class="t">${esc(i.t)}${i.att ? CLIP : ""}${showTag === true && i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.sub)}</span></span>
       <span class="ld num ${i.s}">${right}</span>${CHEV}</button>`;
 }
 // karbantartás sor: név, hátralévő km, alatta vékony csík
@@ -672,7 +674,7 @@ function carForm(c) {
       const data = { name: f.name.trim(), plate: f.plate.trim().toUpperCase(), year: f.year, model: f.model.trim(), km: Number(f.km) };
       if (isNew) {
         const id = uid();
-        S.cars.push({ id, ...data, kmDate: iso(today()), docs: {}, notes: {}, log: [], custom: [], fuel: [], costs: [], pdocs: {}, pnotes: {},
+        S.cars.push({ id, ...data, kmDate: iso(today()), docs: {}, notes: {}, log: [], custom: [], fuel: [], costs: [], pdocs: {}, pnotes: {}, links: {},
           ...Object.fromEntries(SERVICE_KEYS.map(k => [k, { date: "", km: data.km, everyKm: SERVICES[k].everyKm, everyMonths: SERVICES[k].everyMonths }])) });
         S.sel = id; tab = "docs";
         toast("Autó hozzáadva. Most add meg a lejáratokat.");
@@ -713,11 +715,13 @@ function docForm(c, k) {
     ${field("exp", "Lejárat dátuma", `type="date" value="${v(c.docs[k])}"`)}
     ${field("note", "Megjegyzés", `value="${v(c.notes[k])}" placeholder="pl. biztosító, kötvényszám"`)}
     <p class="hint">Hagyd üresen a dátumot, ha erre az autóra nem vonatkozik.</p>
+    ${attachHtml(c, k)}
     ${historyHtml(hist)}`,
     f => { c.docs[k] = f.exp; c.notes[k] = f.note.trim(); },
     c.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], k);
+  wireAttach(form, c, k);
   form.querySelector("[data-renew]").onclick = () => renewForm({
     title: `${t[1]} megújítása`, sub: esc(c.name), old: c.docs[k], months: RENEW_MONTHS[k], presets: PRESETS[k], note: c.notes[k], fromToday: k === "itp",
     save: f => { c.docs[k] = f.exp; c.notes[k] = f.note; c.costs.push({ id: uid(), cat: k, amount: f.amount, date: f.paid, note: f.note }); }
@@ -732,14 +736,37 @@ function personalForm(c, k) {
     <p class="hint">Vagy javítsd a mostani adatokat:</p>
     ${field("exp", "Lejárat dátuma", `type="date" value="${v(P.docs[k])}"`)}
     ${field("note", "Megjegyzés", `value="${v(P.notes[k])}" placeholder="pl. kategóriák: B"`)}
+    ${attachHtml(c, "p:" + k)}
     ${historyHtml(hist)}`,
     f => { P.docs[k] = f.exp; P.notes[k] = f.note.trim(); },
     P.docs[k] ? `<button type="button" class="btn ghost" data-cal>Naptárba</button>` : "");
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], "p:" + k, true);
+  wireAttach(form, c, "p:" + k);
   form.querySelector("[data-renew]").onclick = () => renewForm({
     title: `${t[1]} megújítása`, sub: esc(c.name), old: P.docs[k], months: RENEW_MONTHS[k], note: P.notes[k],
     save: f => { P.docs[k] = f.exp; P.notes[k] = f.note; c.costs.push({ id: uid(), cat: k, amount: f.amount, date: f.paid, note: f.note }); }
+  });
+}
+
+/* ---------- irat csatolása egy lejárathoz (az Iratok mappából) ---------- */
+function attachHtml(c, k) {
+  const id = (c.links || {})[k];
+  if (!id) return `<div class="fgroup att"><button type="button" class="arow" data-att="add">${CLIP}<span class="lt"><span class="t">Irat csatolása</span><span class="s">pl. a kötvény vagy az igazolás az Iratok mappából</span></span>${CHEV}</button></div>`;
+  const name = Vault.fileName(id);
+  return `<div class="fgroup att">
+    <button type="button" class="arow" data-att="open">${CLIP}<span class="lt"><span class="t">${name ? esc(name) : "Csatolt irat"}</span><span class="s">megnyitás ${ANDROID ? "feloldással" : "Face ID-val vagy PIN-kóddal"}</span></span>${CHEV}</button>
+    <button type="button" class="arow" data-att="change"><span class="lt"><span class="t">Másik irat csatolása</span></span></button>
+    <button type="button" class="arow red" data-att="del"><span class="lt"><span class="t">Irat leválasztása</span></span></button></div>`;
+}
+function wireAttach(form, c, k) {
+  const link = id => { c.links = c.links || {}; c.links[k] = id; save(); render(); toast("Irat csatolva."); };
+  form.querySelectorAll("[data-att]").forEach(b => b.onclick = () => {
+    const a = b.dataset.att;
+    if (a === "del") { delete c.links[k]; save(); closeSheet(); render(); toast("Irat leválasztva."); return; }
+    closeSheet();   // a Face ID-t még ebben a koppintásban kell indítani
+    if (a === "open") Vault.openFile(c.links[k], () => { delete c.links[k]; save(); render(); toast("A csatolt irat már nincs meg az Iratok mappában, ezért leválasztottam."); });
+    else Vault.pick(link);
   });
 }
 
@@ -828,7 +855,8 @@ function customForm(c, x) {
     <div data-mode="date">${field("date", "Dátum", `type="date" value="${v(x.date)}"`)}${x.date ? `<p class="hint num" style="margin-top:4px">${daysText(x.date)}</p>` : ""}</div>
     <div data-mode="km">${field("km", "Ennél a km-állásnál", `type="number" inputmode="numeric" min="0" value="${v(x.km)}" placeholder="pl. ${Math.ceil((Number(c.km) + 10000) / 1000) * 1000}"`)}
       <p class="hint" style="margin-top:4px">Most ${fmtKm(c.km)}. Ha már csak kevés van hátra, narancssárgára vált.</p></div>
-    ${field("note", "Megjegyzés", `value="${v(x.note)}"`)}`,
+    ${field("note", "Megjegyzés", `value="${v(x.note)}"`)}
+    ${isNew ? "" : attachHtml(c, "c:" + x.id)}`,
     f => {
       const data = { title: f.title.trim(), mode: f.mode, note: f.note.trim() };
       if (f.mode === "km") {
@@ -853,6 +881,7 @@ function customForm(c, x) {
   }
   const cal = form.querySelector("[data-cal]");
   if (cal) cal.onclick = () => exportCalendar([c], "c:" + x.id);
+  if (!isNew) wireAttach(form, c, "c:" + x.id);
   const sync = () => {
     const m = form.querySelector('input[name="mode"]:checked').value;
     form.querySelectorAll("[data-mode]").forEach(el => { el.hidden = el.dataset.mode !== m; });
