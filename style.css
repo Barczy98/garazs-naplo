@@ -179,6 +179,26 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .bv{font-size:14.5px;font-weight:650;text-align:right;white-space:nowrap}
 .bv small{color:var(--muted);font-weight:500;margin-left:2px}
 
+/* ---------- „+” menü (lebegő üveg menü a gomb alatt) ---------- */
+.pmenu-bg{position:fixed;inset:0;z-index:18;background:rgba(0,0,0,.14)}
+.pmenu{position:fixed;width:240px;border-radius:22px;overflow:hidden;background:var(--glass);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+  box-shadow:inset 0 0 0 .7px var(--glass-edge),0 18px 50px rgba(0,0,0,.28)}
+@media (prefers-reduced-motion:no-preference){.pmenu{animation:pmin .16s ease-out;transform-origin:top right}@keyframes pmin{from{opacity:0;transform:scale(.92)}}}
+.pmenu button{position:relative;display:flex;justify-content:space-between;align-items:center;width:100%;padding:13px 16px;border:0;background:none;font-size:17px;color:var(--ink)}
+.pmenu button + button::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--rule)}
+.pmenu svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.pmsep{display:block;height:7px;background:var(--fill)}
+.circ.on{background:var(--ink);color:var(--paper)}
+
+/* költségek: kategória sorok csíkkal, évválasztó kapcsoló */
+.crow{min-height:62px}
+.ctrack{display:block;height:4px;border-radius:2px;background:var(--fill);margin-top:7px;overflow:hidden}
+.ctrack i{display:block;height:100%;border-radius:2px;background:var(--bar)}
+.segbar.years{margin-bottom:2px}
+.addrow .t{color:var(--signal)}
+.ico.add{--c:var(--signal)}
+
 /* ---------- beállítások ---------- */
 .setlist{display:grid;gap:18px}
 .setnote{margin:0;padding:6px 4px 0;font-size:13px;color:var(--muted)}
@@ -229,6 +249,40 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:30;max-width:90vw;
   background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:14px;font-weight:600}
 @media (prefers-reduced-motion:no-preference){.sheet{animation:up .2s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+
+/* iPhone-stílusú ablak: fejléc (Mégse / cím / Mentés), mezők csoportos listában, kapcsolók */
+.sheet.ios{background:var(--paper);gap:16px;padding-top:0}
+.shead{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:14px 0 6px;background:var(--paper)}
+.sbtn{justify-self:start;background:none;border:0;padding:6px 0;color:var(--signal);font-size:17px}
+.sbtn.ssave{justify-self:end;background:var(--signal);color:var(--card);font-weight:600;padding:7px 16px;border-radius:999px}
+.sheet .stitle{font-size:17px;font-weight:600;text-align:center;max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet.ios > .hint{font-size:13px;padding:0 16px;margin-top:-6px}
+.sheet.ios .field,.fgroup .check{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;padding:8px 16px;background:var(--card);border-radius:20px}
+.fgroup{background:var(--card);border-radius:20px;overflow:hidden}
+.fgroup > *{border-radius:0 !important}
+.fgroup > * + *::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--rule)}
+.sheet.ios .label{flex:none;max-width:56%;font-size:16px;font-weight:400;color:var(--ink)}
+.sheet.ios .field input,.sheet.ios .field select{flex:1;min-width:0;width:auto;background:none;border:0;border-radius:0;padding:6px 0;text-align:right;text-align-last:right;font-size:16px;color:var(--ink)}
+.sheet.ios .field input::placeholder{color:var(--muted);opacity:.7}
+.sheet.ios .field input:focus-visible,.sheet.ios .field select:focus-visible{outline:none}
+.sheet.ios .field input[type="date"]{min-height:0;display:flex;justify-content:flex-end}
+.sheet.ios .field input[type="date"]::-webkit-date-and-time-value{text-align:right}
+.sheet.ios .field:has(.seg){display:grid;gap:8px;padding:12px 16px}
+.sheet.ios .seg{border:0;background:var(--fill);border-radius:999px}
+.sheet.ios .seg span{border-radius:999px;color:var(--ink)}
+.fgroup .check span{flex:1;font-size:16px}
+.fgroup .check input{order:2;flex:none;-webkit-appearance:none;appearance:none;width:51px;height:31px;margin:0;border-radius:999px;background:var(--fill);position:relative;cursor:pointer;transition:background .2s}
+.fgroup .check input::before{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform .2s}
+.fgroup .check input:checked{background:var(--ok)}
+.fgroup .check input:checked::before{transform:translateX(20px)}
+.sheet.ios .actions{display:grid;gap:10px;justify-content:stretch;margin-top:2px}
+.sheet.ios .actions:empty{display:none}
+.sheet.ios .actions .btn{width:100%}
+.sheet.ios .actions .btn.ghost,.sheet.ios .actions .btn.quiet{background:var(--card);color:var(--ink)}
+.sheet.ios .actions .btn.danger{background:var(--card);color:var(--bad);font-weight:400}
+.confirm{display:grid;gap:10px;padding:14px 16px;border-radius:20px;background:var(--card);border:1px solid var(--bad)}
+.confirm-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.confirm .btn.danger{background:var(--bad-bg)}
 
 /* ---------- Naptárba adás ---------- */
 .calsheet{gap:14px}

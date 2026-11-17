@@ -28,5 +28,6 @@ Platformfüggő viselkedés az `ANDROID` (app.js) és `AND` (vault.js) kapcsoló
 - A style.css 2.2-ben egységesítve lett: egy réteg, szekciókra bontva, minden szín változóként (világos :root + kétszer a sötét mód). Ne tegyünk a végére felülíró blokkokat, hanem a megfelelő szekcióban módosítsunk.
 - Stílusváltoztatás után vizuális összehasonlítás: minden képernyőről kép előtte és utána (Playwright, rögzített dátum), pixel-összevetés.
 - Km: ha 14 napnál régebben frissült, az Áttekintés megnyitásakor (naponta egyszer, autónként) rákérdez. Beíráskor ellenőrzi, hogy a km nem kisebb-e egy korábbi / nem nagyobb-e egy későbbi bejegyzésnél, és szól 50 000 km feletti ugrásnál; „Mégis mentés” gombbal felülbírálható.
+- Ablakok (2.3): a `sheet()` iOS-stílusú: fejlécben Mégse / cím (az első <h2>) / Mentés; a mezőket a `groupFields()` csoportos listába rendezi (címke balra, érték jobbra), a jelölőnégyzetek kapcsolók; a többi gomb (törlés, Naptárba) alul. Nincs duplán szereplő gomb: új bejegyzés a fejléc „+” gombjával (Áttekintésen „+” menü: km, tankolás, szerviz, kiadás), az autó szerkesztése a Beállítások / Autók alatt.
 - Iratok: 4 jegyű PIN + Face ID/ujjlenyomat (WebAuthn PRF), AES-GCM titkosítás. PDF teljes képernyőn, kép kis ablakban, koppintásra teljes képernyő.
 - Új dizájn előtt előbb mintát kell mutatni (artifact), és csak jóváhagyás után beépíteni.

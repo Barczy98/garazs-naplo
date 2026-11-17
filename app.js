@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.3.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -172,6 +172,27 @@ const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
 const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
 const shortDate = s => parseDate(s).toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
+/* ---------- „+” menü az Áttekintésen: lebegő menü a gomb alatt ---------- */
+function plusMenu(anchor) {
+  const old = document.getElementById("pmenu"); if (old) { old.remove(); return; }
+  const items = [["km", "Km frissítése", "gauge"], null, ["addfuel", "Új tankolás", "fuel"], ["addlog", "Új szervizbejegyzés", "wrench"], ["addcost", "Új kiadás", "receipt"]];
+  const wrap = document.createElement("div");
+  wrap.id = "pmenu"; wrap.className = "pmenu-bg";
+  const r = anchor.getBoundingClientRect();
+  wrap.innerHTML = `<div class="pmenu" role="menu" style="top:${Math.round(r.bottom + 8)}px;right:${Math.max(12, Math.round(innerWidth - r.right))}px">
+    ${items.map(it => it ? `<button role="menuitem" data-pm="${it[0]}">${it[1]}<svg viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[it[2]]}</svg></button>` : '<span class="pmsep"></span>').join("")}</div>`;
+  document.body.appendChild(wrap);
+  anchor.classList.add("on");
+  const close = () => { wrap.remove(); anchor.classList.remove("on"); };
+  wrap.addEventListener("click", e => {
+    const it = e.target.closest("[data-pm]");
+    close();
+    if (!it) return;
+    const c = car(); if (!c) return;
+    ({ km: () => kmSheet(c), addfuel: () => fuelForm(c, null), addlog: () => logForm(c, null), addcost: () => costForm(c, null) })[it.dataset.pm]();
+  });
+}
+
 /* ---------- km-állás: ellenőrzés beíráskor és emlékeztető ---------- */
 const KM_REMIND_DAYS = 14;
 const kmAge = c => c.kmDate ? Math.round((today() - parseDate(c.kmDate)) / DAY) : Infinity;
@@ -258,7 +279,7 @@ function render() {
   else {
     const list = items(c);
     const circ = (act, ic, label) => `<button class="circ" data-act="${act}" aria-label="${label}"><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></button>`;
-    const extra = tab === "home" ? circ("editcar", "edit", "Autó adatainak szerkesztése")
+    const extra = tab === "home" ? circ("plusmenu", "plus", "Új bejegyzés")
       : tab === "docs" ? circ("calcar", "cal", "Lejáratok a Naptárba")
       : circ(logView === "fuel" ? "addfuel" : logView === "costs" ? "addcost" : "addlog", "plus", "Új bejegyzés");
     const carLine = `${esc(c.model || c.name)}${c.year ? ", " + esc(c.year) : ""}`;
@@ -343,9 +364,6 @@ function renderHome(c, list) {
   h += group("Utolsó szerviz", last ? `<button class="lrow" data-entry="${last.id}">${rowIcon("wrench")}<span class="lt"><span class="t">${esc(last.title)}</span>
       <span class="s num">${fmtDate(last.date)}, ${fmtKm(last.km)}${last.place ? ", " + esc(last.place) : ""}</span></span>
       <span class="ld num">${last.cost ? fmtMoney(last.cost) : ""}</span>${CHEV}</button>` : `<div class="empty">Még nincs bejegyzés.</div>`);
-  h += group("Gyors rögzítés", `<button class="lrow" data-act="addfuel">${rowIcon("fuel", "ok")}<span class="lt"><span class="t">Új tankolás</span></span>${CHEV}</button>
-      <button class="lrow" data-act="addlog">${rowIcon("wrench", "blue")}<span class="lt"><span class="t">Új szervizbejegyzés</span></span>${CHEV}</button>
-      <button class="lrow" data-act="addcost">${rowIcon("receipt")}<span class="lt"><span class="t">Új kiadás</span></span>${CHEV}</button>`);
   h += `</div>`;
   return h;
 }
@@ -363,6 +381,7 @@ const ROW_ICONS = {
   wrench: '<path d="M14.5 6a4 4 0 0 0-5 5L4 16.5 7.5 20l5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z"/>',
   fuel: '<path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M5 10h9"/><path d="M14 8l3 3v6a1.5 1.5 0 0 0 3 0V9l-2-2"/>',
   receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/>',
 };
 const rowIcon = (k, s = "gray") => {
   const key = k.startsWith("p:") ? "id" : k.startsWith("c:") ? "custom" : k;
@@ -385,7 +404,7 @@ function meterRowHtml(i) {
       ${i.frac == null ? `<span class="s">${esc(i.sub)}</span>` : `<span class="meter"><i class="${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></i></span><span class="s">${esc(i.sub)}</span>`}</span>${CHEV}</button>`;
 }
 // Lejáratok hónapok szerint csoportosítva: pötty, név, jobbra dátum és hátralévő napok
-function timeline(list) {
+function timeline(list, lastRow = "") {
   const dated = list.filter(i => i.date).sort((a, b) => a.date.localeCompare(b.date));
   const undated = list.filter(i => !i.date);
   const row = i => lrowHtml(i);
@@ -396,19 +415,16 @@ function timeline(list) {
     groups[groups.length - 1].items.push(i);
   }
   if (undated.length) groups.push({ m: "Nincs megadva", items: undated });
-  return `<div class="lgroups">${groups.map(g => `<div class="lgroup"><p class="lmonth">${g.m}</p><div class="rows">${g.items.map(row).join("")}</div></div>`).join("")}</div>`;
+  return `<div class="lgroups">${groups.map(g => `<div class="lgroup"><p class="lmonth">${g.m}</p><div class="rows">${g.items.map(row).join("")}</div></div>`).join("")}${lastRow ? `<div class="lgroup"><div class="rows">${lastRow}</div></div>` : ""}</div>`;
 }
 
 function renderDocs(c, list) {
+  const addRow = `<button class="lrow addrow" data-act="addcustom"><span class="ico add"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.plus}</svg></span><span class="lt"><span class="t">Saját emlékeztető hozzáadása</span></span></button>`;
   return staleBanner() + `<section class="section">
-    ${timeline(list.filter(i => !i.service))}
-    <button class="btn wide" data-act="calcar">Lejáratok a Naptárba</button>
-    <button class="btn quiet wide" data-act="addcustom">Saját emlékeztető hozzáadása</button>
-    <p class="hint">A Naptárba került eseménynél ${THE_PHONE} ${remindText()} szól előre. Ha módosítasz egy dátumot, add hozzá újra azt az egy tételt.</p></section>
+    ${timeline(list.filter(i => !i.service), addRow)}</section>
     <section class="lgroup"><h2 class="lmonth">Karbantartás</h2><div class="rows">${list.filter(i => i.service).map(meterRowHtml).join("")}</div></section>
     <section class="section"><h2 class="h">Személyes</h2>
-    ${timeline(personalItems(c))}
-    <button class="btn quiet wide" data-act="calpersonal">Személyes lejáratok a Naptárba</button></section>`;
+    ${timeline(personalItems(c))}</section>`;
 }
 
 function renderLog(c) {
@@ -424,9 +440,9 @@ function renderService(c) {
   const year = String(today().getFullYear());
   const totalYear = list.filter(e => e.date.startsWith(year)).reduce((s, e) => s + Number(e.cost || 0), 0);
   const total = list.reduce((s, e) => s + Number(e.cost || 0), 0);
-  return `<section class="section"><h2 class="h">Szervizkönyv <button class="btn" data-act="addlog">Új bejegyzés</button></h2>
+  return `<section class="section">
     <div class="rows">${list.length ? list.map(entryHtml).join("")
-      : `<div class="empty">Még nincs bejegyzés. A következő szerviz után add hozzá az „Új bejegyzés” gombbal.</div>`}</div>
+      : `<div class="empty">Még nincs bejegyzés. A következő szerviz után add hozzá a fenti „+” gombbal.</div>`}</div>
     ${list.length ? `<div class="sum num"><span>${year}-ban ${fmtMoney(totalYear)}</span><span>Összesen ${fmtMoney(total)}, ${list.length} bejegyzés</span></div>` : ""}</section>`;
 }
 
@@ -460,7 +476,7 @@ function renderFuel(c) {
   const year = String(today().getFullYear());
   const yearCost = c.fuel.filter(f => f.date.startsWith(year) && !f.covered).reduce((s, f) => s + Number(f.cost || 0), 0);
   const yearCovered = c.fuel.filter(f => f.date.startsWith(year) && f.covered).reduce((s, f) => s + Number(f.cost || 0), 0);
-  let h = `<section class="section"><h2 class="h">Tankolás <button class="btn" data-act="addfuel">Új tankolás</button></h2>`;
+  let h = `<section class="section">`;
   if (list.length) h += `<div class="stats">
       <div><span class="big num">${st.avg != null ? fmtL(st.avg) : "–"}</span><span class="s">átlag l/100 km</span></div>
       <div><span class="big num">${st.recent != null ? fmtL(st.recent) : "–"}</span><span class="s">utóbbi 1500 km</span></div>
@@ -481,7 +497,8 @@ function fuelForm(c, f) {
     <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
     <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
-    <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Fedezve (céges kártyával fizettem, nem az én költségem)</span></label>`,
+    <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Céges kártyával fizettem</span></label>
+    <p class="hint">Ha be van kapcsolva, nem számít bele a saját költségeidbe.</p>`,
     d => {
       if (kmBlocked(form, c, d.date, Number(d.km), isNew ? null : f.id)) return false;
       const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: f.full !== false, covered: !!d.covered };
@@ -512,29 +529,31 @@ function costYears(c) {
   c.costs.forEach(x => ys.add(x.date.slice(0, 4)));
   return [...ys].sort().reverse();
 }
+const COST_ICONS = { fuel: "fuel", service: "wrench", rca: "rca", rov: "rov", itp: "itp", tax: "tax", license: "id", idcard: "id", passport: "id", other: "receipt" };
 function renderCosts(c) {
-  const years = costYears(c);
-  if (!years.includes(costYear)) costYear = years[0];
+  const years = costYears(c).slice(0, 4).reverse();   // a legutóbbi 4 év, időrendben
+  if (!years.includes(costYear)) costYear = years[years.length - 1];
   const y = yearCosts(c, costYear);
   const rows = Object.entries(y.by).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const max = rows.length ? rows[0][1] : 1;
-  let h = `<section class="section"><div class="years">${years.map(yr => `<button class="toggle" aria-pressed="${yr === costYear}" data-year="${yr}">${yr}</button>`).join("")}</div>
-    <div class="costhead"><span class="big num">${fmtMoney(y.total)}</span>
-    <span class="hint num">${costYear}-ban összesen${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km (${fmtKm(y.driven)} alapján)` : ""}</span>
-    ${y.covered ? `<span class="hint num">Céges kártyával fedezett tankolás: ${fmtMoney(y.covered)}, ez nincs benne.</span>` : ""}</div>`;
-  h += rows.length ? `<div class="rows bars" role="table" aria-label="Költségek kategóriánként, ${costYear}">${rows.map(([k, val]) => `<div class="bar" role="row">
-      <span class="bl" role="cell">${COST_CATS[k]}</span>
-      <span class="bt" role="presentation"><span style="width:${Math.max(2, val / max * 100)}%"></span></span>
-      <span class="bv num" role="cell">${val.toLocaleString("hu-HU")} lej <small>${Math.round(val / y.total * 100)}%</small></span></div>`).join("")}</div>`
+  let h = `<section class="section">`;
+  if (years.length > 1) h += `<div class="segbar years" style="grid-template-columns:repeat(${years.length},1fr)" role="tablist">${years.map(yr =>
+    `<button role="tab" aria-pressed="${yr === costYear}" data-year="${yr}">${yr}</button>`).join("")}</div>`;
+  h += `<div class="costhead"><span class="big num">${fmtMoney(y.total)}</span>
+    <span class="hint num">${costYear}-ban${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km` : ""}.${y.covered ? ` Céges kártyával fedezve: ${fmtMoney(y.covered)}, ez nincs benne.` : ""}</span></div>`;
+  h += rows.length ? `<div class="rows" role="table" aria-label="Költségek kategóriánként, ${costYear}">${rows.map(([k, val]) => `<div class="lrow crow" role="row">
+      ${rowIcon(COST_ICONS[k] || "receipt")}
+      <span class="lt" role="cell"><span class="t">${COST_CATS[k]}</span><span class="ctrack" role="presentation"><i style="width:${Math.max(2, val / max * 100)}%"></i></span></span>
+      <span class="ld num" role="cell">${val.toLocaleString("hu-HU")} lej<small>${Math.round(val / y.total * 100)}%</small></span></div>`).join("")}</div>`
     : `<div class="rows"><div class="empty">${costYear}-ban még nincs rögzített kiadás.</div></div>`;
   h += `</section>`;
   const manual = c.costs.filter(x => x.date.startsWith(costYear)).sort((a, b) => b.date.localeCompare(a.date));
-  h += `<section class="section"><h2 class="h">Egyéb kiadások <button class="btn" data-act="addcost">Új kiadás</button></h2>
-    <div class="rows">${manual.length ? manual.map(x => `<button class="svc" data-cost="${x.id}"><span class="svc-main">
-      <span class="t">${COST_CATS[x.cat] || "Egyéb"}${x.note ? `: ${esc(x.note)}` : ""}</span><span class="s num">${fmtDate(x.date)}</span></span>
-      <span class="cost num">${fmtMoney(x.amount)}</span></button>`).join("")
-      : `<div class="empty">RCA, rovinieta, ITP, adó vagy bármi más (pl. mosás, parkolás).</div>`}</div>
-    <p class="hint">A tankolások, a szervizek és a megújítások ára magától bekerül.</p></section>`;
+  h += `<section class="lgroup"><h2 class="lmonth">Egyéb kiadások</h2>
+    <div class="rows">${manual.length ? manual.map(x => `<button class="lrow" data-cost="${x.id}">${rowIcon(COST_ICONS[x.cat] || "receipt")}
+      <span class="lt"><span class="t">${COST_CATS[x.cat] || "Egyéb"}${x.note ? `: ${esc(x.note)}` : ""}</span><span class="s num">${fmtDate(x.date)}</span></span>
+      <span class="ld num">${fmtMoney(x.amount)}</span>${CHEV}</button>`).join("")
+      : `<div class="empty">RCA, rovinieta, ITP, adó vagy bármi más (pl. mosás, parkolás). Új kiadás a fenti „+” gombbal.</div>`}</div>
+    <p class="setnote">A tankolások, a szervizek és a megújítások ára magától bekerül.</p></section>`;
   return h;
 }
 function costForm(c, x) {
@@ -594,11 +613,20 @@ function renderSettings() {
 }
 
 /* ---------- lapok (űrlapok) ---------- */
+// Ablak iPhone-stílusban: fent Mégse / cím / Mentés, a mezők csoportos listában, a többi gomb alul.
 function sheet(html, onSave, extraActions = "") {
   const el = $("#sheet");
-  el.innerHTML = `<div class="sheet-bg"><form class="sheet" id="sf" novalidate>${html}
-    <div class="actions">${extraActions}<span class="spacer"></span><button type="button" class="btn ghost" data-close>Mégse</button>${onSave ? '<button class="btn" type="submit">Mentés</button>' : ""}</div></form></div>`;
+  // az első <h2> lesz a fejléc címe
+  const m = html.match(/<h2>([\s\S]*?)<\/h2>/);
+  const title = m ? m[1] : "";
+  if (m) html = html.replace(m[0], "");
+  el.innerHTML = `<div class="sheet-bg"><form class="sheet ios" id="sf" novalidate>
+    <div class="shead"><button type="button" class="sbtn" data-close>${onSave ? "Mégse" : "Bezárás"}</button>
+      <h2 class="stitle">${title}</h2>${onSave ? '<button class="sbtn ssave" type="submit">Mentés</button>' : "<span></span>"}</div>
+    ${html}
+    <div class="actions">${extraActions}</div></form></div>`;
   const form = $("#sf");
+  groupFields(form);
   form.addEventListener("submit", e => {
     e.preventDefault();
     if (!form.checkValidity()) { form.reportValidity(); return; }
@@ -608,14 +636,25 @@ function sheet(html, onSave, extraActions = "") {
   el.querySelector(".sheet-bg").addEventListener("click", e => { if (e.target.classList.contains("sheet-bg")) closeSheet(); });
   return form;
 }
+// az egymás utáni mezőket (és a két oszlopos sorokat) egy-egy csoportos listába rendezi
+function groupFields(form) {
+  let group = null;
+  for (const node of [...form.children]) {
+    const isField = node.matches(".field, .row2, label.check");
+    if (!isField) { group = null; continue; }
+    if (!group) { group = document.createElement("div"); group.className = "fgroup"; node.before(group); }
+    if (node.matches(".row2")) { [...node.children].forEach(ch => group.appendChild(ch)); node.remove(); }
+    else group.appendChild(node);
+  }
+}
 const closeSheet = () => { $("#sheet").innerHTML = ""; };
 const field = (id, label, attrs = "") => `<label class="field"><span class="label">${label}</span><input id="f-${id}" name="${id}" ${attrs}></label>`;
 const v = s => esc(s ?? "");
 
 function confirmIn(form, text, onYes) {
   const box = document.createElement("div");
-  box.className = "card"; box.style.cssText = "padding:12px;display:grid;gap:10px;border-color:var(--bad)";
-  box.innerHTML = `<p>${text}</p><div class="actions"><button type="button" class="btn ghost" data-no>Mégse</button><button type="button" class="btn danger" data-yes>Igen, törlés</button></div>`;
+  box.className = "confirm";
+  box.innerHTML = `<p>${text}</p><div class="confirm-btns"><button type="button" class="btn ghost" data-no>Mégse</button><button type="button" class="btn danger" data-yes>Igen, törlés</button></div>`;
   form.querySelector(".actions").before(box);
   box.querySelector("[data-no]").onclick = () => box.remove();
   box.querySelector("[data-yes]").onclick = () => { onYes(); save(); closeSheet(); render(); };
@@ -806,7 +845,7 @@ function customForm(c, x) {
   if (!isNew) {
     const rb = document.createElement("button");
     rb.type = "button"; rb.className = "btn wide"; rb.textContent = mode === "km" ? "Megtörtént: új km és ár" : "Megújítás: új dátum és ár";
-    form.querySelector("h2").after(rb);
+    form.querySelector(".shead").after(rb);
     rb.onclick = () => mode === "km" ? customKmRenew(c, x) : renewForm({
       title: `${x.title}: megújítás`, sub: esc(c.name), old: x.date, months: 12, note: x.note,
       save: f => { x.date = f.exp; x.note = f.note; c.costs.push({ id: uid(), cat: "other", amount: f.amount, date: f.paid, note: x.title }); }
@@ -1088,6 +1127,7 @@ document.addEventListener("click", e => {
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c], null, true); break;
+    case "plusmenu": plusMenu(b); break;
     case "settings": prevTab = tab === "settings" ? prevTab : tab; tab = "settings"; render(); window.scrollTo(0, 0); break;
     case "closeset": tab = prevTab || "home"; render(); window.scrollTo(0, 0); break;
     case "stale": staleSheet(); break;
