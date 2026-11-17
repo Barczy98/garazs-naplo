@@ -1,11 +1,10 @@
 // Offline működés: az app fájljait a telefon eltárolja.
 // Új verzió kiadásakor a CACHE nevét növelni kell.
 const PREFIX = "garazs-" + new URL(self.registration.scope).pathname.replace(/[^a-z0-9]/gi, "") + "-";
-const CACHE = PREFIX + "v2.1.1";
+const CACHE = PREFIX + "v2.2.0";
 const FILES = ["./", "index.html", "config.js", "style.css", "app.js", "vault.js", "manifest.webmanifest",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png",
-  "lib/pdfjs/pdf.min.js", "lib/pdfjs/pdf.worker.min.js",
-  "fonts/archivo-latin-wdth-normal.woff2", "fonts/archivo-latin-ext-wdth-normal.woff2"];
+  "lib/pdfjs/pdf.min.js", "lib/pdfjs/pdf.worker.min.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

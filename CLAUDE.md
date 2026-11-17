@@ -25,6 +25,8 @@ Platformfüggő viselkedés az `ANDROID` (app.js) és `AND` (vault.js) kapcsoló
 - Tankolás: nincs „tele tank” pipa; a fogyasztás becslés (összes liter / megtett km). „Fedezve” = céges kártya, nem számít a saját költségbe.
 - ITP megújítás a mai naptól számol, a többi a régi lejárattól.
 - Dizájn (2.0): modern iPhone / iOS 26 stílus: rendszerbetű (SF), nagy félkövér címek, kerek (24px) csoportos listák halvány színes ikonokkal, lebegő üveg alsó sáv 4 füllel (Áttekintés, Lejáratok, Napló, Iratok). Beállítások jobb felül kerek fogaskerék gombbal. Rendszámtáblás autóváltó marad. Visszafogott, nem élénk színek (tompa borostyán kiemelés). Km-kijelző: nagy vékony számok + olajcsere csík. Hónapkorong NEM kell. Az Iratok mappa dizájnja maradjon.
-- A 2.0 stílus a style.css végén lévő „iOS 26 réteg” blokkban van, ez írja felül a régebbi szabályokat.
+- A style.css 2.2-ben egységesítve lett: egy réteg, szekciókra bontva, minden szín változóként (világos :root + kétszer a sötét mód). Ne tegyünk a végére felülíró blokkokat, hanem a megfelelő szekcióban módosítsunk.
+- Stílusváltoztatás után vizuális összehasonlítás: minden képernyőről kép előtte és utána (Playwright, rögzített dátum), pixel-összevetés.
+- Km: ha 14 napnál régebben frissült, az Áttekintés megnyitásakor (naponta egyszer, autónként) rákérdez. Beíráskor ellenőrzi, hogy a km nem kisebb-e egy korábbi / nem nagyobb-e egy későbbi bejegyzésnél, és szól 50 000 km feletti ugrásnál; „Mégis mentés” gombbal felülbírálható.
 - Iratok: 4 jegyű PIN + Face ID/ujjlenyomat (WebAuthn PRF), AES-GCM titkosítás. PDF teljes képernyőn, kép kis ablakban, koppintásra teljes képernyő.
 - Új dizájn előtt előbb mintát kell mutatni (artifact), és csak jóváhagyás után beépíteni.

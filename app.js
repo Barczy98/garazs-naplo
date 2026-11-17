@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.1.1";
+const APP_VERSION = "2.2.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -172,6 +172,64 @@ const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
 const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
 const shortDate = s => parseDate(s).toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
+/* ---------- km-állás: ellenőrzés beíráskor és emlékeztető ---------- */
+const KM_REMIND_DAYS = 14;
+const kmAge = c => c.kmDate ? Math.round((today() - parseDate(c.kmDate)) / DAY) : Infinity;
+// Elütés-ellenőrzés: a km nem lehet kisebb egy korábbi, és nem lehet nagyobb egy későbbi bejegyzésnél.
+function kmCheck(c, date, km, selfId) {
+  const pts = [...c.log, ...c.fuel].filter(x => x.id !== selfId && x.date && x.km).map(x => ({ date: x.date, km: Number(x.km) }));
+  let prev = null, next = null;
+  for (const p of pts) {
+    if (p.date <= date && (!prev || p.km > prev.km)) prev = p;
+    if (p.date > date && (!next || p.km < next.km)) next = p;
+  }
+  if (!selfId && date >= (c.kmDate || "") && (!prev || c.km > prev.km)) prev = { date: c.kmDate, km: Number(c.km), now: true };
+  if (prev && km < prev.km) return prev.now
+    ? `Ez kevesebb, mint az eddigi km-állás (${fmtKm(prev.km)}).`
+    : `Ez kevesebb, mint a ${fmtDate(prev.date)}-i bejegyzés (${fmtKm(prev.km)}).`;
+  if (next && km > next.km) return `Ez több, mint a későbbi, ${fmtDate(next.date)}-i bejegyzés (${fmtKm(next.km)}).`;
+  if (prev && km - prev.km > 50000) return `Ez ${fmtKm(km - prev.km)}-rel több az előzőnél (${fmtKm(prev.km)}). Nem ütöttél el egy számot?`;
+  return "";
+}
+// figyelmeztetés az ablakban; a „Mégis mentés” gombbal el lehet menteni
+function kmGuard(form, msg) {
+  let box = form.querySelector(".kmwarn");
+  if (!box) {
+    box = document.createElement("div"); box.className = "kmwarn";
+    form.querySelector(".actions").before(box);
+    const km = form.querySelector("#f-km");
+    if (km) km.addEventListener("input", () => { delete form.dataset.force; box.remove(); }, { once: true });
+  }
+  box.innerHTML = `<p>${esc(msg)}</p><button type="button" class="btn quiet" data-force>Mégis mentés</button>`;
+  box.querySelector("[data-force]").onclick = () => { form.dataset.force = "1"; form.requestSubmit(); };
+}
+const kmBlocked = (form, c, date, km, selfId) => {
+  if (form.dataset.force) return false;
+  const m = kmCheck(c, date, km, selfId);
+  if (m) { kmGuard(form, m); return true; }
+  return false;
+};
+function kmSheet(c, intro) {
+  const form = sheet(`<h2>Km-óra állás</h2><p class="hint">${intro || `${esc(c.name)}, eddig ${fmtKm(c.km)}`}</p>
+    ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}`,
+    f => {
+      if (kmBlocked(form, c, iso(today()), Number(f.km), null)) return false;
+      c.km = Number(f.km); c.kmDate = iso(today()); toast("Km-állás frissítve.");
+    });
+  setTimeout(() => { const i = form.querySelector("#f-km"); if (i) { i.focus(); i.select(); } }, 60);
+}
+// ha régen frissült a km, megnyitáskor (naponta egyszer, autónként) rákérdez
+function maybeAskKm() {
+  const c = car();
+  if (!c || tab !== "home" || $("#sheet").innerHTML) return;
+  const age = kmAge(c);
+  if (age < KM_REMIND_DAYS) return;
+  S.kmAsked = S.kmAsked || {};
+  if (S.kmAsked[c.id] === iso(today())) return;
+  S.kmAsked[c.id] = iso(today()); save();
+  kmSheet(c, `${esc(c.name)}: ${age === Infinity ? "még nem frissítetted a km-et" : `utoljára ${age} napja frissítetted a km-et`}. Mennyi most?`);
+}
+
 function sinceText(s) {
   if (!s) return "";
   const d = Math.round((today() - parseDate(s)) / DAY);
@@ -231,7 +289,9 @@ function plates(c) {
 // km-kijelző: nagy, vékony számok doboz nélkül; alatta csík a következő olajcseréig
 function odometer(c) {
   const oil = serviceInfo(c, "oil");
-  const since = sinceText(c.kmDate).replace("Frissítve: ", "frissítve ");
+  const since = kmAge(c) >= KM_REMIND_DAYS
+    ? `<span class="c-warn">${c.kmDate ? sinceText(c.kmDate).replace("Frissítve: ", "frissítve ") : "még nem frissítetted"}</span>`
+    : sinceText(c.kmDate).replace("Frissítve: ", "frissítve ");
   let below;
   if (oil.s === "none") below = `<div class="kmeta"><button class="link" data-edit="oil">Add meg az utolsó olajcserét</button><span>${since}</span></div>`;
   else {
@@ -247,18 +307,7 @@ function odometer(c) {
   </div>`;
 }
 
-const rowHtml = i => `<button class="r" data-edit="${esc(i.k)}">
-  <span class="n ${i.s}">${i.n}<small>${i.u}</small></span>
-  <span class="rt"><span class="t">${esc(i.t)}${i.personal ? ' <span class="tag">személyes</span>' : ""}</span><span class="s">${esc(i.s === "none" ? i.sub : i.service ? i.sub : (i.s === "bad" ? "lejárt " : "") + fmtDate(i.date) + (i.sub ? ", " + i.sub : ""))}</span></span>
-</button>`;
 
-function gaugeHtml(i) {
-  if (i.s === "none") return `<button class="gauge" data-edit="${i.k}"><span class="gtop"><b>${esc(i.t)}</b><span class="hint">nincs megadva</span></span><span class="s">${esc(i.sub)}</span></button>`;
-  return `<button class="gauge" data-edit="${i.k}">
-    <span class="gtop"><b>${esc(i.t)}</b><span class="c-${i.s} num">${esc(i.txt)}</span></span>
-    ${i.frac == null ? "" : `<span class="track"><span class="fill ${i.s}" style="width:${Math.max(3, Math.round(i.frac * 100))}%"></span></span>`}
-    <span class="s">${esc(i.sub)}</span></button>`;
-}
 
 function entryHtml(e) {
   return `<button class="svc" data-entry="${e.id}">
@@ -434,6 +483,7 @@ function fuelForm(c, f) {
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
     <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Fedezve (céges kártyával fizettem, nem az én költségem)</span></label>`,
     d => {
+      if (kmBlocked(form, c, d.date, Number(d.km), isNew ? null : f.id)) return false;
       const data = { date: d.date, km: Number(d.km), liters: Number(d.liters), cost: d.cost ? Number(d.cost) : 0, station: d.station.trim(), full: f.full !== false, covered: !!d.covered };
       if (isNew) c.fuel.push({ id: uid(), ...data }); else Object.assign(f, data);
       if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
@@ -700,12 +750,13 @@ function renewForm(o) {
 
 function serviceSwapForm(c, k) {
   const def = SERVICES[k];
-  sheet(`<h2>${def.t}: új csere</h2><p class="hint">${esc(c.name)}. Bekerül a szervizkönyvbe, és innen számolja a következőt.</p>
+  const form = sheet(`<h2>${def.t}: új csere</h2><p class="hint">${esc(c.name)}. Bekerül a szervizkönyvbe, és innen számolja a következőt.</p>
     <div class="row2">${field("date", "Dátum", `type="date" required value="${iso(today())}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}</div>
     <div class="row2">${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("place", "Szerviz neve", "")}</div>
     ${field("title", "Mit csináltak", `value="${def.t}${k === "oil" ? " és szűrők" : ""}" required`)}`,
     f => {
       const km = Number(f.km);
+      if (kmBlocked(form, c, f.date, km, null)) return false;
       c.log.push({ id: uid(), date: f.date, km, title: f.title.trim(), place: f.place.trim(), cost: Number(f.cost) });
       c[k] = { ...c[k], date: f.date, km };
       if (km > c.km) { c.km = km; c.kmDate = f.date; }
@@ -782,6 +833,7 @@ function logForm(c, e) {
     <div class="row2">${field("place", "Szerviz neve", `value="${v(e.place)}"`)}${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" value="${v(e.cost || "")}"`)}</div>
     ${isNew ? SERVICE_KEYS.map(k => `<label class="check"><input type="checkbox" id="f-is-${k}" name="is-${k}"><span>${SERVICES[k].logLabel} (a következőt innen számolja)</span></label>`).join("") : ""}`,
     f => {
+      if (kmBlocked(form, c, f.date, Number(f.km), isNew ? null : e.id)) return false;
       const data = { date: f.date, km: Number(f.km), title: f.title.trim(), place: f.place.trim(), cost: f.cost ? Number(f.cost) : 0 };
       if (isNew) c.log.push({ id: uid(), ...data }); else Object.assign(e, data);
       if (data.km > c.km) { c.km = data.km; c.kmDate = data.date; }
@@ -1011,7 +1063,7 @@ document.addEventListener("click", e => {
   if (b.hasAttribute("data-close")) { closeSheet(); return; }
   if (b.closest("#sheet")) return; // a lapok saját gombjai
   const c = car();
-  if (b.dataset.car) { S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home"; save(); render(); return; }
+  if (b.dataset.car) { S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home"; save(); render(); setTimeout(maybeAskKm, 300); return; }
   if (b.dataset.tab && !b.dataset.lv) {
     // a Face ID-nak közvetlenül a koppintásból kell indulnia
     if (b.dataset.tab === "vault" && Vault.hasFace() && !Vault.isOpen()) Vault.unlockFace();
@@ -1032,9 +1084,7 @@ document.addEventListener("click", e => {
   switch (b.dataset.act) {
     case "addcar": carForm(null); break;
     case "editcar": carForm(c); break;
-    case "km": sheet(`<h2>Km-óra állás</h2><p class="hint">${esc(c.name)} · eddig ${fmtKm(c.km)}</p>
-      ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}`,
-      f => { c.km = Number(f.km); c.kmDate = iso(today()); toast("Km-állás frissítve."); }); break;
+    case "km": kmSheet(c); break;
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c], null, true); break;
@@ -1052,10 +1102,11 @@ document.addEventListener("click", e => {
 $("#importfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; });
 
 // napváltáskor (pl. másnap megnyitva) frissüljenek a napok
-document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); setTimeout(maybeAskKm, 400); } });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 render();
 Vault.init();
+setTimeout(maybeAskKm, 1200);
 if (S.movedPersonal) { const n = S.movedPersonal; delete S.movedPersonal; save(); setTimeout(() => toast(`A személyes iratok mostantól autónként vannak. Az eddigiek ide kerültek: ${n}.`), 900); }
 if (S.movedLicense) { delete S.movedLicense; save(); setTimeout(() => toast("A jogosítványod átkerült a Lejáratok fül Személyes részébe."), 600); }
