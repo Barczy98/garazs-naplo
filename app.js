@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.6.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -495,7 +495,8 @@ function renderFuel(c) {
 
 function fuelForm(c, f) {
   const isNew = !f; f = f || { date: iso(today()), km: c.km, full: true };
-  const form = sheet(`<h2>${isNew ? "Új tankolás" : "Tankolás"}</h2>
+  const scanRow = isNew ? `<div class="fgroup att scan"><label class="arow"><svg class="clip" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lt"><span class="t">Blokk fotózása</span><span class="s" id="scan-s">a liter, az összeg, a dátum és a kút magától kitöltődik</span></span>${CHEV}<input type="file" accept="image/*" capture="environment" id="scan-in" hidden></label></div>` : "";
+  const form = sheet(`<h2>${isNew ? "Új tankolás" : "Tankolás"}</h2>${scanRow}
     <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
     <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
@@ -510,6 +511,37 @@ function fuelForm(c, f) {
     },
     isNew ? "" : `<button type="button" class="btn danger" data-del>Törlés</button>`);
   if (!isNew) form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt a tankolást?", () => { c.fuel = c.fuel.filter(x => x.id !== f.id); });
+  if (isNew) wireScan(form);
+}
+// tankolási blokk fényképéből kitölti a mezőket (a felismerés a telefonon fut, a kép nem megy el sehova)
+function loadReceipt() {
+  if (window.Receipt) return Promise.resolve();
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = "receipt.js"; s.onload = res; s.onerror = () => rej(new Error("offline")); document.head.appendChild(s); });
+}
+function wireScan(form) {
+  const inp = form.querySelector("#scan-in"), row = inp.closest(".arow"), st = form.querySelector("#scan-s");
+  const msg = (t, cls = "") => { st.textContent = t; row.dataset.state = cls; };
+  inp.onchange = async () => {
+    const file = inp.files[0]; inp.value = "";
+    if (!file || row.dataset.state === "busy") return;
+    msg("Olvasom a blokkot… (első alkalommal kb. fél perc)", "busy");
+    try {
+      await loadReceipt();
+      const r = await Receipt.scan(file, n => msg(n === 1 ? "Olvasom a blokkot… 1/2" : "Olvasom a blokkot… 2/2", "busy"));
+      if (!form.isConnected) return;
+      const set = (id, val) => { if (val == null || val === "") return; const el = form.querySelector("#f-" + id); el.value = val; el.closest(".field").classList.add("filled"); };
+      set("date", r.date && r.date <= iso(today()) ? r.date : null);
+      set("liters", r.liters != null ? String(r.liters) : null);
+      set("cost", r.total != null ? String(r.total) : null);
+      set("station", r.station);
+      const got = ["liters", "total", "date", "station"].filter(k => r[k] != null).length;
+      if (!got) { msg("Nem sikerült kiolvasni. Próbáld újra közelebbről, jó fényben, egyenesen.", "err"); return; }
+      msg(r.litersGuessed ? "Kitöltve. A litert az összegből számoltam, nézd át!" : "Kitöltve, nézd át az adatokat. A km-t írd be.", "ok");
+      const km = form.querySelector("#f-km"); km.focus(); km.select && km.select();
+    } catch (e) {
+      msg(navigator.onLine ? "Hiba történt az olvasáskor. Próbáld újra." : "Az első használathoz internet kell (a felismerő letöltése).", "err");
+    }
+  };
 }
 
 /* ---------- költségek ---------- */
