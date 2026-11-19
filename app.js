@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.4.1";
+const APP_VERSION = "2.5.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -295,7 +295,7 @@ function render() {
   $("#app").innerHTML = h;
   const tabs = [["home", "Áttekintés"], ["docs", "Lejáratok"], ["log", "Napló"], ["vault", "Iratok"]];
   $("#tabs").innerHTML = tabs.map(([k, l]) =>
-    `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${l}</button>`).join("");
+    `<button class="tab" role="tab" aria-selected="${tab === k}" data-tab="${k}" aria-label="${l}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg><span>${l}</span></button>`).join("");
 }
 
 function plateHtml(x) {
@@ -1200,6 +1200,16 @@ document.addEventListener("click", e => {
   }
 });
 $("#importfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; });
+
+// alsó sáv: lefelé görgetve keskenyebb (csak ikonok), felfelé görgetve vagy az oldal tetején visszanő
+let lastY = 0;
+addEventListener("scroll", () => {
+  const y = scrollY, d = y - lastY, bar = $("#tabbar");
+  if (y < 40) bar.classList.remove("compact");
+  else if (d > 6) bar.classList.add("compact");
+  else if (d < -6) bar.classList.remove("compact");
+  lastY = y;
+}, { passive: true });
 
 // napváltáskor (pl. másnap megnyitva) frissüljenek a napok
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); setTimeout(maybeAskKm, 400); } });

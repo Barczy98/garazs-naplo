@@ -18,6 +18,7 @@
   --plate:#0a3a9e; --stamp:#0a3a9e; --bar:#2f5d8a;
   --seg-sel:#ffffff;    /* kapcsolók kiválasztott része */
   --glass:rgba(255,255,255,.62); --glass-edge:rgba(255,255,255,.75); --glass-sel:rgba(0,0,0,.06);
+  --bar-tint:rgba(255,255,255,.16); --bar-sel:rgba(0,0,0,.08); --edge-hi:rgba(255,255,255,.9); --edge-lo:rgba(0,0,0,.08);
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;
   color-scheme:light;
 }
@@ -27,6 +28,7 @@
   --bad:#e08a83; --bad-bg:#3a1f1d; --warn:#d9a466; --warn-bg:#3a2d1c; --ok:#86bc9c; --ok-bg:#1d3127;
   --blue:#93add0; --gray:#a0a5ab; --drum:#060908; --stamp:#93add0; --bar:#93add0; --seg-sel:#636366;
   --glass:rgba(44,44,46,.55); --glass-edge:rgba(255,255,255,.14); --glass-sel:rgba(255,255,255,.1);
+  --bar-tint:rgba(40,40,44,.22); --bar-sel:rgba(255,255,255,.14); --edge-hi:rgba(255,255,255,.35); --edge-lo:rgba(0,0,0,.4);
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --paper:#000000; --card:#1c1c1e; --ink:#ffffff; --muted:#98989f; --rule:#38383a; --fill:rgba(120,120,128,.24);
@@ -34,6 +36,7 @@
   --bad:#e08a83; --bad-bg:#3a1f1d; --warn:#d9a466; --warn-bg:#3a2d1c; --ok:#86bc9c; --ok-bg:#1d3127;
   --blue:#93add0; --gray:#a0a5ab; --drum:#060908; --stamp:#93add0; --bar:#93add0; --seg-sel:#636366;
   --glass:rgba(44,44,46,.55); --glass-edge:rgba(255,255,255,.14); --glass-sel:rgba(255,255,255,.1);
+  --bar-tint:rgba(40,40,44,.22); --bar-sel:rgba(255,255,255,.14); --edge-hi:rgba(255,255,255,.35); --edge-lo:rgba(0,0,0,.4);
   color-scheme:dark}
 
 /* ---------- alap ---------- */
@@ -209,16 +212,25 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .welcome{margin-top:12vh;display:grid;gap:16px;justify-items:center;text-align:center}
 .welcome .hint{max-width:34ch}
 
-/* ---------- lebegő üveg alsó sáv ---------- */
+/* ---------- lebegő tükrös üveg alsó sáv; lefelé görgetve keskenyebb, csak ikonok ---------- */
 .tabs{position:fixed;z-index:5;left:max(14px,env(safe-area-inset-left,0px));right:max(14px,env(safe-area-inset-right,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));
-  padding:0;border:0;border-radius:999px;background:var(--glass);
-  -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
-  box-shadow:inset 0 0 0 .7px var(--glass-edge),inset 0 1px 0 var(--glass-edge),0 10px 30px rgba(0,0,0,.18)}
-.tabs-in{margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:5px}
-.tab{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;border-radius:999px;padding:8px 0 7px;font-size:11px;font-weight:600;letter-spacing:0;color:var(--ink)}
+  padding:0;border:0;border-radius:999px;background:var(--bar-tint);
+  -webkit-backdrop-filter:blur(3px) saturate(190%) brightness(1.06);backdrop-filter:blur(3px) saturate(190%) brightness(1.06);
+  box-shadow:inset 0 1px 0 var(--edge-hi),inset 0 -1px 0 var(--edge-lo),inset 0 0 0 .7px rgba(255,255,255,.35),
+    inset 0 8px 18px -10px rgba(255,255,255,.55),0 12px 32px rgba(0,0,0,.2);
+  transition:left .32s cubic-bezier(.3,.7,.2,1),right .32s cubic-bezier(.3,.7,.2,1),bottom .32s,width .32s cubic-bezier(.3,.7,.2,1)}
+.tabs-in{margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:5px;transition:padding .32s}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:0;border-radius:999px;padding:8px 0 7px;font-size:11px;font-weight:600;letter-spacing:0;color:var(--ink);
+  transition:padding .32s,gap .32s}
 .tab svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8}
-.tab[aria-selected="true"]{background:var(--glass-sel);color:var(--signal)}
-@media (min-width:560px){.tabs{left:50%;right:auto;width:480px;transform:translateX(-50%)}}
+.tab span{max-height:14px;overflow:hidden;transition:max-height .32s,opacity .2s}
+.tab[aria-selected="true"]{background:var(--bar-sel);color:var(--signal)}
+.tabs.compact{left:max(52px,env(safe-area-inset-left,0px));right:max(52px,env(safe-area-inset-right,0px));bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+.tabs.compact .tabs-in{padding:4px}
+.tabs.compact .tab{padding:9px 0;gap:0}
+.tabs.compact .tab span{max-height:0;opacity:0}
+@media (min-width:560px){.tabs{left:50%;right:auto;width:480px;transform:translateX(-50%)}.tabs.compact{left:50%;right:auto;width:360px}}
+@media (prefers-reduced-motion:reduce){.tabs,.tabs-in,.tab,.tab span{transition:none}}
 
 /* ---------- ablakok (lentről felcsúszó lapok) és űrlapok ---------- */
 .sheet-bg{position:fixed;inset:0;background:rgba(10,15,20,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
