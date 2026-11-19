@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -629,8 +629,14 @@ function sheet(html, onSave, extraActions = "") {
     <div class="actions">${extraActions}</div></form></div>`;
   const form = $("#sf");
   groupFields(form);
+  enhanceInputs(form);
   form.addEventListener("submit", e => {
     e.preventDefault();
+    for (const inp of form.querySelectorAll("[data-num]")) {
+      const v = numVal(inp.value);
+      inp.value = v;
+      inp.setCustomValidity(v && !isFinite(Number(v)) ? "Ide csak számot írj, pl. 32,5" : "");
+    }
     if (!form.checkValidity()) { form.reportValidity(); return; }
     const f = Object.fromEntries(new FormData(form));
     if (onSave(f) !== false) { save(); closeSheet(); render(); checkStaleAfterSave(); }
@@ -650,7 +656,32 @@ function groupFields(form) {
   }
 }
 const closeSheet = () => { $("#sheet").innerHTML = ""; };
-const field = (id, label, attrs = "") => `<label class="field"><span class="label">${label}</span><input id="f-${id}" name="${id}" ${attrs}></label>`;
+const field = (id, label, attrs = "") => {
+  // a type="number" mezőket iPhone-on nehéz javítani (kurzor, kijelölés, vessző), ezért szövegmezők számbillentyűzettel
+  if (/type="number"/.test(attrs)) attrs = attrs.replace(/type="number"/, 'type="text" data-num autocomplete="off"').replace(/\s(min|step)="[^"]*"/g, "");
+  return `<label class="field"><span class="label">${label}</span><input id="f-${id}" name="${id}" ${attrs}></label>`;
+};
+// a beírt szám egységesítése: szóköz ki, tizedesvessző pontra
+const numVal = v => String(v).replace(/\s/g, "").replace(",", ".");
+// törlés gomb (×) a szöveges mezőkbe, és a számmezők tartalma koppintáskor kijelölődik
+function enhanceInputs(form) {
+  form.querySelectorAll(".field input:not([type=date]):not([type=checkbox]):not([type=radio]):not([type=file])").forEach(inp => {
+    if (!inp.placeholder) inp.placeholder = " ";
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "clr"; b.tabIndex = -1; b.setAttribute("aria-label", "Mező törlése");
+    b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9 9l6 6M15 9l-6 6"/></svg>';
+    b.addEventListener("pointerdown", e => e.preventDefault());   // a mező maradjon fókuszban
+    b.onclick = () => { inp.value = ""; inp.dispatchEvent(new Event("input", { bubbles: true })); inp.focus(); };
+    inp.after(b);
+    if (inp.hasAttribute("data-num")) {
+      // koppintásra az egész szám kijelölődik, így rögtön átírható; az elengedés ne szüntesse meg a kijelölést
+      let keep = false;
+      inp.addEventListener("focus", () => { inp.select(); keep = true; });
+      inp.addEventListener("pointerup", e => { if (keep) { e.preventDefault(); inp.select(); keep = false; } });
+      inp.addEventListener("mouseup", e => { if (keep) e.preventDefault(); });
+    }
+  });
+}
 const v = s => esc(s ?? "");
 
 function confirmIn(form, text, onYes) {

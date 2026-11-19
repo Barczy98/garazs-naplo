@@ -261,12 +261,18 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .fgroup{background:var(--card);border-radius:20px;overflow:hidden}
 .fgroup > *{border-radius:0 !important}
 .fgroup > * + *::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--rule)}
-.sheet.ios .label{flex:none;max-width:56%;font-size:16px;font-weight:400;color:var(--ink)}
-.sheet.ios .field input,.sheet.ios .field select{flex:1;min-width:0;width:auto;background:none;border:0;border-radius:0;padding:6px 0;text-align:right;text-align-last:right;font-size:16px;color:var(--ink)}
+/* mezők: a címke fölül, alatta teljes szélességben, balra igazítva lehet írni; jobbra törlés gomb */
+.sheet.ios label.field{display:grid;grid-template-columns:1fr auto;align-items:center;gap:0 8px;padding:9px 12px 7px 16px}
+.sheet.ios .label{grid-column:1 / -1;font-size:13px;font-weight:500;color:var(--muted)}
+.sheet.ios .field input,.sheet.ios .field select{grid-column:1;width:100%;min-width:0;background:none;border:0;border-radius:0;padding:4px 0 3px;min-height:34px;text-align:left;font-size:17px;color:var(--ink)}
+.sheet.ios .field select{grid-column:1 / -1}
+.clr{grid-column:2;width:30px;height:30px;padding:0;border:0;background:none;display:none;place-items:center;color:var(--muted)}
+.clr svg{width:20px;height:20px;fill:color-mix(in srgb,var(--muted) 30%,transparent);stroke:var(--card);stroke-width:2}
+.field input:focus:not(:placeholder-shown) + .clr{display:grid}
 .sheet.ios .field input::placeholder{color:var(--muted);opacity:.7}
 .sheet.ios .field input:focus-visible,.sheet.ios .field select:focus-visible{outline:none}
-.sheet.ios .field input[type="date"]{min-height:0;display:flex;justify-content:flex-end}
-.sheet.ios .field input[type="date"]::-webkit-date-and-time-value{text-align:right}
+.sheet.ios .field input[type="date"]{grid-column:1 / -1;display:block}
+.sheet.ios .field input[type="date"]::-webkit-date-and-time-value{text-align:left}
 .sheet.ios .field:has(.seg){display:grid;gap:8px;padding:12px 16px}
 .sheet.ios .seg{border:0;background:var(--fill);border-radius:999px}
 .sheet.ios .seg span{border-radius:999px;color:var(--ink)}
