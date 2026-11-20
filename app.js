@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.7.1";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -673,7 +673,7 @@ function renderSettings() {
     ${group("Biztonsági mentés", `<button class="lrow" data-act="export" ${S.cars.length ? "" : "disabled"}>
         <span class="lt"><span class="t act">Mentés készítése</span><span class="s">${S.lastBackup ? "Utolsó mentés: " + fmtDate(S.lastBackup) : "Még nem készült mentés"}</span></span>${CHEV}</button>
       <button class="lrow" data-act="import"><span class="lt"><span class="t">Visszaállítás mentésből</span></span>${CHEV}</button>`,
-      "Az adatok csak ezen a telefonon vannak. Néha ments a Fájlokba vagy az iCloud Drive-ra.")}
+      ANDROID ? "Az adatok csak ezen a telefonon vannak. Néha ments a Google Drive-ra." : "Az adatok csak ezen a telefonon vannak. Néha ments a Fájlokba vagy az iCloud Drive-ra.")}
 
     <p class="appfoot">Garázs napló ${APP_VERSION}</p>
   </div>`;
@@ -1181,15 +1181,17 @@ async function deliverFile(name, mime, text, isCalendar) {
 }
 
 async function exportBackup() {
-  const name = `garazs-mentes-${iso(today())}.json`;
+  const name = "garazs-mentes.json";   // mindig ugyanaz a név, így a régi mentés lecserélhető (a dátum a fájlban van)
   let vault = null;
   try { vault = await Vault.exportData(); } catch (e) { toast("Az iratok mappát nem sikerült a mentéshez olvasni."); }
   const data = JSON.stringify({ ...S, lastBackup: undefined, vault, app: "garazs-naplo", exported: new Date().toISOString() });
   const mb = (data.length / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 });
   // a megosztás ablakot új koppintásból kell nyitni, ezért egy gombbal kérjük
   const form = sheet(`<h2>Mentés kész</h2><p>${S.cars.length} autó${vault ? `, ${vault.files.length} irat (titkosítva)` : ""}, ${mb} MB.</p>
-    <p class="hint">Mentsd a Fájlokba vagy az iCloud Drive-ra.${vault ? " Az iratok visszaállításához a mappa PIN-kódja kell." : ""}</p>`, null,
-    `<button type="button" class="btn" data-go>Mentés a Fájlokba</button>`);
+    <p class="hint">${ANDROID
+      ? "Mentsd a Google Drive-ra vagy a Letöltések közé. Ha a régi mentés is ott van, töröld, hogy csak egy maradjon."
+      : "Mentsd a Fájlokba vagy az iCloud Drive-ra, mindig ugyanabba a mappába. Ha rákérdez, válaszd a „Csere” gombot: így mindig csak egy mentésed lesz."}${vault ? " Az iratok visszaállításához a mappa PIN-kódja kell." : ""}</p>`, null,
+    `<button type="button" class="btn" data-go>${ANDROID ? "Mentés" : "Mentés a Fájlokba"}</button>`);
   form.querySelector("[data-go]").onclick = async () => {
     const ok = await deliverFile(name, "application/json", data, false);
     if (ok) { closeSheet(); S.lastBackup = iso(today()); save(); render(); toast("Mentés kész."); }
