@@ -1,6 +1,7 @@
 "use strict";
-/* Tankolási blokk felismerése a telefonon (Tesseract, internet nélkül is, első használat után).
-   A kép nem megy el sehova. Kiolvassa: liter, egységár, fizetett összeg, dátum, benzinkút. */
+/* Szövegfelismerés a telefonon (Tesseract, internet nélkül is, első használat után). A kép nem megy el sehova.
+   - scan(): tankolási blokk → liter, egységár, fizetett összeg, dátum, benzinkút
+   - odometer(): műszerfal fotó → km-óra állás */
 const Receipt = (() => {
   let ready = null;
   function loadLib() {
@@ -138,12 +139,92 @@ const Receipt = (() => {
   async function scan(file, onProgress) {
     const w = await worker();
     if (onProgress) onProgress(1);
-    await w.setParameters({ tessedit_pageseg_mode: "4" });
+    await w.setParameters({ tessedit_pageseg_mode: "4", tessedit_char_whitelist: "" });
     const a = (await w.recognize(await prepare(file))).data.text || "";
     if (onProgress) onProgress(2);
     await w.setParameters({ tessedit_pageseg_mode: "6" });
     const b = (await w.recognize(await prepareWhole(file))).data.text || "";
     return parse(a + "\n" + b);
   }
-  return { scan, parse };
+
+  /* ---------- km-óra a műszerfalról ---------- */
+  // A kijelzőn sötét alapon világító számjegysorokat keresünk: világos foltok, számjegy méretűek,
+  // egy sorban, egyforma magasak (a pontmátrixos kijelzőn a számjegyek összefolyhatnak, az is jó).
+  function findRows(bmp, T) {
+    const sw = 800, k = sw / bmp.width, sh = Math.round(bmp.height * k);
+    const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+    const g = cv.getContext("2d", { willReadFrequently: true }); g.drawImage(bmp, 0, 0, sw, sh);
+    const d = g.getImageData(0, 0, sw, sh).data, N = sw * sh, on = new Uint8Array(N);
+    for (let i = 0; i < N; i++) on[i] = Math.max(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]) > T;
+    const lab = new Int32Array(N), comps = [], st = [];
+    for (let s0 = 0; s0 < N; s0++) if (on[s0] && !lab[s0]) {
+      const id = comps.length + 1; let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0; st.push(s0); lab[s0] = id;
+      while (st.length) {
+        const p = st.pop(), x = p % sw, y = (p / sw) | 0; n++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (const q of [p - 1, p + 1, p - sw, p + sw, p - sw - 1, p - sw + 1, p + sw - 1, p + sw + 1]) {
+          if (q < 0 || q >= N || lab[q] || !on[q] || Math.abs(q % sw - x) > 1) continue;
+          lab[q] = id; st.push(q);
+        }
+      }
+      comps.push({ x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1, n });
+    }
+    const ch = comps.filter(c => c.h >= Math.max(3, sh * 0.008) && c.h <= sh * 0.2 && c.w <= sw * 0.6 &&
+      c.w / c.h > 0.12 && c.w / c.h < 7 && c.n / (c.w * c.h) > 0.15).sort((a, b) => a.x0 - b.x0);
+    const rows = [], used = new Set();
+    for (let i = 0; i < ch.length; i++) {
+      if (used.has(i)) continue;
+      const row = [ch[i]]; let last = ch[i];
+      for (let j = i + 1; j < ch.length; j++) {
+        if (used.has(j)) continue; const c = ch[j];
+        if (c.x0 - last.x1 > last.h * 0.9) continue;
+        if (Math.abs((last.y0 + last.y1) / 2 - (c.y0 + c.y1) / 2) > last.h * 0.25 || Math.abs(c.h - last.h) > last.h * 0.3) continue;
+        row.push(c); used.add(j); last = c;
+      }
+      const x0 = row[0].x0, x1 = last.x1, y0 = Math.min(...row.map(c => c.y0)), y1 = Math.max(...row.map(c => c.y1)), h = y1 - y0 + 1;
+      if (x1 - x0 >= h * 2.8) rows.push({ n: row.length, box: [(x0 - h * 0.6) / k, (y0 - h * 0.35) / k, (x1 - x0 + h * 1.2) / k, h * 1.7 / k] });
+    }
+    return rows.sort((a, b) => b.n - a.n).slice(0, 8);
+  }
+  // egy sor kivágva, 120 képpont magasra nagyítva; világos írás → sötét írás fehér alapon
+  function cropRow(bmp, [x, y, w, h], thr) {
+    x = Math.max(0, x); y = Math.max(0, y); w = Math.min(bmp.width - x, w); h = Math.min(bmp.height - y, h);
+    const k = 120 / h, cv = document.createElement("canvas");
+    cv.width = Math.round(w * k); cv.height = 120;
+    const g = cv.getContext("2d", { willReadFrequently: true }); g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, x, y, w, h, 0, 0, cv.width, cv.height);
+    const img = g.getImageData(0, 0, cv.width, cv.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { const m = Math.max(d[i], d[i + 1], d[i + 2]); d[i] = d[i + 1] = d[i + 2] = thr ? (m > thr ? 0 : 255) : 255 - m; }
+    g.putImageData(img, 0, 0);
+    return cv;
+  }
+  // 4–7 jegyű egész számok (a dátum, az óra, a tizedes napi km és a hőmérséklet kiesik); „322 913” is jó
+  function kmNumbers(t) {
+    t = t.replace(/(\d) (?=\d{3}(?![\d.,]))/g, "$1");
+    return [...t.matchAll(/(?<![\d.,:\/-])\d{4,7}(?!\d|[.,:]\d)/g)].map(m => Number(m[0]));
+  }
+  // refKm: az eddigi km-állás; ennél kisebbet vagy jóval nagyobbat nem fogadunk el elsőre
+  async function odometer(file, refKm, onProgress) {
+    const w = await worker();
+    const bmp = await createImageBitmap(file);
+    const votes = new Map(), add = n => votes.set(n, (votes.get(n) || 0) + 1);
+    const T = [140, 190, 225];
+    for (let i = 0; i < T.length; i++) {
+      if (onProgress) onProgress(i + 1, T.length);
+      for (const r of findRows(bmp, T[i])) {
+        for (const [thr, wl] of [[0, ""], [170, ""], [0, "0123456789 .:kmKM"]]) {
+          await w.setParameters({ tessedit_pageseg_mode: "7", tessedit_char_whitelist: wl });
+          kmNumbers((await w.recognize(cropRow(bmp, r.box, thr))).data.text || "").forEach(add);
+        }
+      }
+    }
+    bmp.close && bmp.close();
+    const all = [...votes.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
+    const ok = refKm > 0 ? all.filter(([n]) => n >= refKm && n <= refKm + 30000) : all.filter(([n]) => n >= 1000);
+    if (ok.length) return { km: ok[0][0], sure: true };
+    if (all.length) return { km: all[0][0], sure: false };
+    return {};
+  }
+
+  return { scan, parse, odometer };
 })();

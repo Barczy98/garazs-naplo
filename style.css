@@ -281,6 +281,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .clr{grid-column:2;width:30px;height:30px;padding:0;border:0;background:none;display:none;place-items:center;color:var(--muted)}
 .clr svg{width:20px;height:20px;fill:color-mix(in srgb,var(--muted) 30%,transparent);stroke:var(--card);stroke-width:2}
 .field input:focus:not(:placeholder-shown) + .clr{display:grid}
+/* kamera gomb a km-mezőben (km-óra fotóról) */
+.sheet.ios label.field:has(.odo){grid-template-columns:1fr auto auto}
+.odo{grid-column:3;grid-row:2;width:36px;height:36px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--signal) 14%,transparent);color:var(--signal)}
+.odo svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9}
+.field.busy .odo svg{animation:pulse 1s ease-in-out infinite alternate}
+.odost{font-weight:400}
+.odost.ok{color:var(--ok)} .odost.err{color:var(--bad)}
 .sheet.ios .field input::placeholder{color:var(--muted);opacity:.7}
 .sheet.ios .field input:focus-visible,.sheet.ios .field select:focus-visible{outline:none}
 .sheet.ios .field input[type="date"]{grid-column:1 / -1;display:block}

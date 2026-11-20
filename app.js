@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.7.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -233,7 +233,7 @@ const kmBlocked = (form, c, date, km, selfId) => {
 };
 function kmSheet(c, intro) {
   const form = sheet(`<h2>Km-óra állás</h2><p class="hint">${intro || `${esc(c.name)}, eddig ${fmtKm(c.km)}`}</p>
-    ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}`,
+    ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" data-odo value="${c.km}"`)}`,
     f => {
       if (kmBlocked(form, c, iso(today()), Number(f.km), null)) return false;
       c.km = Number(f.km); c.kmDate = iso(today()); toast("Km-állás frissítve.");
@@ -497,7 +497,7 @@ function fuelForm(c, f) {
   const isNew = !f; f = f || { date: iso(today()), km: c.km, full: true };
   const scanRow = isNew ? `<div class="fgroup att scan"><label class="arow"><svg class="clip" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lt"><span class="t">Blokk fotózása</span><span class="s" id="scan-s">a liter, az összeg, a dátum és a kút magától kitöltődik</span></span>${CHEV}<input type="file" accept="image/*" capture="environment" id="scan-in" hidden></label></div>` : "";
   const form = sheet(`<h2>${isNew ? "Új tankolás" : "Tankolás"}</h2>${scanRow}
-    <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${v(f.km)}"`)}</div>
+    <div class="row2">${field("date", "Dátum", `type="date" required value="${v(f.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" data-odo value="${v(f.km)}"`)}</div>
     <div class="row2">${field("liters", "Liter", `type="number" inputmode="decimal" step="any" required min="0.1" value="${v(f.liters)}"`)}${field("cost", "Fizetve (lej)", `type="number" inputmode="decimal" step="any" value="${v(f.cost || "")}"`)}</div>
     ${field("station", "Benzinkút", `value="${v(f.station)}" placeholder="pl. OMV Florești"`)}
     <label class="check"><input type="checkbox" id="f-covered" name="covered" ${f.covered ? "checked" : ""}><span>Céges kártyával fizettem</span></label>
@@ -513,10 +513,43 @@ function fuelForm(c, f) {
   if (!isNew) form.querySelector("[data-del]").onclick = () => confirmIn(form, "Törlöd ezt a tankolást?", () => { c.fuel = c.fuel.filter(x => x.id !== f.id); });
   if (isNew) wireScan(form);
 }
+// km-óra leolvasása a műszerfal fotójáról: kamera gomb a km-mezőben
+const CAM = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+function wireOdo(inp) {
+  const fld = inp.closest(".field"), lbl = fld.querySelector(".label"), base = lbl.textContent;
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "odo"; b.innerHTML = CAM; b.setAttribute("aria-label", "Km-óra fényképezése");
+  const fi = document.createElement("input");
+  fi.type = "file"; fi.accept = "image/*"; fi.setAttribute("capture", "environment"); fi.hidden = true;
+  fld.append(b, fi);
+  const msg = (t, cls = "") => { lbl.innerHTML = t ? `${esc(base)} <span class="odost ${cls}">· ${t}</span>` : esc(base); };
+  b.addEventListener("click", e => { e.preventDefault(); if (!b.disabled) fi.click(); });
+  fi.onchange = async () => {
+    const file = fi.files[0]; fi.value = "";
+    if (!file) return;
+    b.disabled = true; fld.classList.add("busy"); msg("km-óra olvasása…");
+    try {
+      await loadReceipt();
+      const ref = Number(numVal(inp.value)) || 0;   // a mezőben lévő eddigi km-állás (új autónál üres)
+      const r = await Receipt.odometer(file, ref, (i, n) => msg(`km-óra olvasása… ${i}/${n}`));
+      if (!inp.isConnected) return;
+      if (r.km == null) { msg("nem találtam, fotózd közelebbről", "err"); return; }
+      inp.value = r.km; fld.classList.add("filled"); inp.dispatchEvent(new Event("input", { bubbles: true }));
+      msg(r.sure ? "a fotóról, nézd át" : "nem biztos, nézd meg", r.sure ? "ok" : "err");
+    } catch (e) {
+      msg(navigator.onLine ? "hiba, próbáld újra" : "az első használathoz internet kell", "err");
+    } finally { b.disabled = false; fld.classList.remove("busy"); }
+  };
+}
 // tankolási blokk fényképéből kitölti a mezőket (a felismerés a telefonon fut, a kép nem megy el sehova)
+let receiptLoad = null;
 function loadReceipt() {
-  if (window.Receipt) return Promise.resolve();
-  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = "receipt.js"; s.onload = res; s.onerror = () => rej(new Error("offline")); document.head.appendChild(s); });
+  if (!receiptLoad) receiptLoad = new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = "receipt.js"; s.onload = res;
+    s.onerror = () => { receiptLoad = null; s.remove(); rej(new Error("offline")); };
+    document.head.appendChild(s);
+  });
+  return receiptLoad;
 }
 function wireScan(form) {
   const inp = form.querySelector("#scan-in"), row = inp.closest(".arow"), st = form.querySelector("#scan-s");
@@ -536,7 +569,7 @@ function wireScan(form) {
       set("station", r.station);
       const got = ["liters", "total", "date", "station"].filter(k => r[k] != null).length;
       if (!got) { msg("Nem sikerült kiolvasni. Próbáld újra közelebbről, jó fényben, egyenesen.", "err"); return; }
-      msg(r.litersGuessed ? "Kitöltve. A litert az összegből számoltam, nézd át!" : "Kitöltve, nézd át az adatokat. A km-t írd be.", "ok");
+      msg(r.litersGuessed ? "Kitöltve. A litert az összegből számoltam, nézd át!" : "Kitöltve, nézd át az adatokat. A km-t írd be, vagy fotózd le a km-órát.", "ok");
       const km = form.querySelector("#f-km"); km.focus(); km.select && km.select();
     } catch (e) {
       msg(navigator.onLine ? "Hiba történt az olvasáskor. Próbáld újra." : "Az első használathoz internet kell (a felismerő letöltése).", "err");
@@ -662,6 +695,7 @@ function sheet(html, onSave, extraActions = "") {
   const form = $("#sf");
   groupFields(form);
   enhanceInputs(form);
+  form.querySelectorAll("[data-odo]").forEach(wireOdo);
   form.addEventListener("submit", e => {
     e.preventDefault();
     for (const inp of form.querySelectorAll("[data-num]")) {
@@ -732,7 +766,7 @@ function carForm(c) {
     ${field("name", "Megnevezés", `required value="${v(c.name)}" placeholder="pl. Apu autója"`)}
     <div class="row2">${field("plate", "Rendszám", `value="${v(c.plate)}" placeholder="CJ 01 ABC" autocapitalize="characters"`)}${field("year", "Évjárat", `type="number" inputmode="numeric" value="${v(c.year)}"`)}</div>
     ${field("model", "Márka, típus", `value="${v(c.model)}" placeholder="pl. Dacia Logan 1.5 dCi"`)}
-    ${field("km", "Km-óra állás", `type="number" inputmode="numeric" required min="0" value="${v(c.km)}"`)}`,
+    ${field("km", "Km-óra állás", `type="number" inputmode="numeric" required min="0" data-odo value="${v(c.km)}"`)}`,
     f => {
       const data = { name: f.name.trim(), plate: f.plate.trim().toUpperCase(), year: f.year, model: f.model.trim(), km: Number(f.km) };
       if (isNew) {
@@ -880,7 +914,7 @@ function renewForm(o) {
 function serviceSwapForm(c, k) {
   const def = SERVICES[k];
   const form = sheet(`<h2>${def.t}: új csere</h2><p class="hint">${esc(c.name)}. Bekerül a szervizkönyvbe, és innen számolja a következőt.</p>
-    <div class="row2">${field("date", "Dátum", `type="date" required value="${iso(today())}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" value="${c.km}"`)}</div>
+    <div class="row2">${field("date", "Dátum", `type="date" required value="${iso(today())}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required min="0" data-odo value="${c.km}"`)}</div>
     <div class="row2">${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" min="0" required`)}${field("place", "Szerviz neve", "")}</div>
     ${field("title", "Mit csináltak", `value="${def.t}${k === "oil" ? " és szűrők" : ""}" required`)}`,
     f => {
@@ -960,7 +994,7 @@ function logForm(c, e) {
   const isNew = !e; e = e || { date: iso(today()), km: c.km };
   const form = sheet(`<h2>${isNew ? "Új szerviz bejegyzés" : "Szerviz bejegyzés"}</h2>
     ${field("title", "Mit csináltak", `required value="${v(e.title)}" placeholder="pl. Olajcsere + szűrők"`)}
-    <div class="row2">${field("date", "Dátum", `type="date" required value="${v(e.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required value="${v(e.km)}"`)}</div>
+    <div class="row2">${field("date", "Dátum", `type="date" required value="${v(e.date)}"`)}${field("km", "Km-állás", `type="number" inputmode="numeric" required data-odo value="${v(e.km)}"`)}</div>
     <div class="row2">${field("place", "Szerviz neve", `value="${v(e.place)}"`)}${field("cost", "Ár (lej)", `type="number" inputmode="decimal" step="any" value="${v(e.cost || "")}"`)}</div>
     ${isNew ? SERVICE_KEYS.map(k => `<label class="check"><input type="checkbox" id="f-is-${k}" name="is-${k}"><span>${SERVICES[k].logLabel} (a következőt innen számolja)</span></label>`).join("") : ""}`,
     f => {
