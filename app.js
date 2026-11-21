@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.4";
+const APP_VERSION = "2.7.5";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -1229,7 +1229,7 @@ async function exportBackup() {
   const name = "garazs-mentes.json";   // mindig ugyanaz a név, így a régi mentés lecserélhető (a dátum a fájlban van)
   let vault = null;
   try { vault = await Vault.exportData(); } catch (e) { toast("Az iratok mappát nem sikerült a mentéshez olvasni."); }
-  const data = JSON.stringify({ ...S, lastBackup: undefined, vault, app: "garazs-naplo", exported: new Date().toISOString() });
+  const data = JSON.stringify({ ...S, lastBackup: undefined, vault, app: "garazs-naplo", format: BACKUP_FORMAT, exported: new Date().toISOString() });
   const mb = (data.length / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 });
   // a megosztás ablakot új koppintásból kell nyitni, ezért egy gombbal kérjük
   const form = sheet(`<h2>Mentés kész</h2><p>${S.cars.length} autó${vault ? `, ${vault.files.length} irat (titkosítva)` : ""}, ${mb} MB.</p>
@@ -1243,21 +1243,96 @@ async function exportBackup() {
   };
 }
 
+/* ---------- visszaállítás (2.7.5): előbb a teljes mentés ellenőrzése, utána egy lépésben ---------- */
+const BACKUP_FORMAT = 2;   // a mentésfájl formátuma; a 2.7.5 előtti mentésekben nincs format mező (= 1)
+const STATE_VERSION = 1;   // az adatszerkezet verziója (S.version)
+const isDate = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && iso(parseDate(s)) === s;
+const isNum = x => x === undefined || x === null || x === "" || Number.isFinite(Number(x));
+const isObj = x => x && typeof x === "object" && !Array.isArray(x);
+const LIST_NAMES = { log: "szervizbejegyzések", fuel: "tankolások", costs: "kiadások", custom: "saját emlékeztetők" };
+// a hiba szövege, vagy "" ha a mentés rendben van
+function checkBackup(d) {
+  if (!isObj(d) || d.app !== "garazs-naplo" || !Array.isArray(d.cars)) return "Ez a fájl nem Garázs napló mentés.";
+  if (Number(d.format || 1) > BACKUP_FORMAT || Number(d.version || 1) > STATE_VERSION)
+    return "Ez a mentés az app újabb verziójával készült. Frissítsd az appot (zárd be teljesen, és nyisd meg újra internettel), utána próbáld újra.";
+  if (d.settings != null && (!isObj(d.settings) || (d.settings.remind != null && !Array.isArray(d.settings.remind)))) return "A beállítások hibásak a mentésben.";
+  const ids = new Set();
+  for (const [i, c] of d.cars.entries()) {
+    const who = isObj(c) && typeof c.name === "string" && c.name ? `„${c.name}”` : `A(z) ${i + 1}. autó`;
+    if (!isObj(c) || !c.id || typeof c.name !== "string") return `${who}: hiányzik az azonosító vagy a név.`;
+    if (ids.has(c.id)) return `${who}: kétszer szerepel ugyanaz az autó.`;
+    ids.add(c.id);
+    if (!isNum(c.km)) return `${who}: hibás km-állás.`;
+    if (c.kmDate && !isDate(c.kmDate)) return `${who}: hibás dátum (${c.kmDate}).`;
+    for (const k of ["docs", "notes", "pdocs", "pnotes", "links"]) if (c[k] != null && !isObj(c[k])) return `${who}: hibás adatszerkezet (${k}).`;
+    for (const v of [...Object.values(c.docs || {}), ...Object.values(c.pdocs || {})]) if (v && !isDate(v)) return `${who}: hibás lejárati dátum (${v}).`;
+    for (const k of SERVICE_KEYS) {
+      const o = c[k]; if (o == null) continue;
+      if (!isObj(o) || (o.date && !isDate(o.date)) || !isNum(o.km) || !isNum(o.everyKm) || !isNum(o.everyMonths)) return `${who}: hibás ${SERVICES[k].t.toLowerCase()} adat.`;
+    }
+    for (const k of Object.keys(LIST_NAMES)) {
+      if (c[k] == null) continue;
+      if (!Array.isArray(c[k])) return `${who}: hibás adatszerkezet (${k}).`;
+      for (const x of c[k]) {
+        if (!isObj(x)) return `${who}: hibás elem a ${LIST_NAMES[k]} között.`;
+        if (k === "custom" ? x.date && !isDate(x.date) : !isDate(x.date)) return `${who}: hibás dátum a ${LIST_NAMES[k]} között (${x.date || "üres"}).`;
+        for (const n of ["km", "liters", "cost", "amount", "startKm"]) if (!isNum(x[n])) return `${who}: hibás szám a ${LIST_NAMES[k]} között.`;
+      }
+    }
+  }
+  if (d.vault != null) { const e = Vault.checkData(d.vault); if (e) return `Az Iratok rész hibás a mentésben: ${e}.`; }
+  return "";
+}
+function restoreError(msg, changed) {
+  sheet(`<h2>Nem állítható vissza</h2><p>${esc(msg)}</p><p class="hint">${changed || "Semmi nem változott: a telefonon a régi adatok vannak."}</p>`, null);
+}
+// Sorrend: autóadatok a tárhelyre (ha nem fér el, semmi nem változott), utána az iratok egy lépésben.
+// Ha az iratok nem sikerülnek, az autóadatok is visszaállnak a régire.
+async function restoreBackup(data, wipeVault) {
+  const vault = data.vault, st = { ...data };
+  delete st.app; delete st.exported; delete st.vault; delete st.format;
+  let next;
+  try { next = normalize(st); } catch (e) { return restoreError("A mentés autóadatai nem dolgozhatók fel."); }
+  let oldRaw = null;
+  try { oldRaw = localStorage.getItem(KEY); } catch (e) {}
+  try { localStorage.setItem(KEY, JSON.stringify(next)); }
+  catch (e) { return restoreError("Az autóadatokat nem sikerült a telefonra írni. Lehet, hogy megtelt a tárhely."); }
+  try {
+    if (vault) await Vault.importData(vault);
+    else if (wipeVault) await Vault.clear();
+  } catch (e) {
+    try { if (oldRaw === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, oldRaw); }
+    catch (e2) { BROKEN = null; S = next; render(); return restoreError("Az iratokat nem sikerült visszaállítani.", "Az autóadatok a mentésből visszaálltak, az Iratok mappa a régi maradt."); }
+    return restoreError(vault ? "Az iratokat nem sikerült visszaállítani." : "Az Iratok mappát nem sikerült törölni.");
+  }
+  BROKEN = null; S = next; closeSheet(); tab = "home"; render(); toast("Adatok visszaállítva.");
+}
 function importBackup(file) {
   const r = new FileReader();
   r.onload = () => {
-    let data;
-    try { data = JSON.parse(r.result); } catch (e) { data = null; }
-    if (!data || data.app !== "garazs-naplo" || !Array.isArray(data.cars)) {
-      toast("Ez a fájl nem Garázs napló mentés."); return;
-    }
-    const form = sheet(`<h2>Visszaállítás</h2><p>A mentésben ${data.cars.length} autó van (${data.cars.map(c => esc(c.name)).join(", ")})${data.vault ? ` és ${data.vault.files.length} irat` : ""}, készült: ${fmtDate((data.exported || "").slice(0, 10))}.</p>
-      <p class="hint">A visszaállítás lecseréli a jelenlegi adatokat.</p>`, null,
+    let data = null;
+    try { data = JSON.parse(r.result); } catch (e) {}
+    const err = checkBackup(data);
+    if (err) return restoreError(err);
+    const hasVault = !!data.vault, devVault = Vault.isSetUp();
+    const form = sheet(`<h2>Visszaállítás</h2><p>A mentésben ${data.cars.length} autó van (${data.cars.map(c => esc(c.name)).join(", ")})${hasVault ? ` és ${data.vault.files.length} irat` : ""}, készült: ${fmtDate((data.exported || "").slice(0, 10))}</p>
+      <p class="hint">A visszaállítás lecseréli a jelenlegi autóadatokat.${hasVault ? `${devVault ? " A telefonon lévő Iratok mappa is lecserélődik a mentésben lévőre." : ""} Az iratok megnyitásához a mentéskori PIN-kód kell.` : ""}</p>
+      ${!hasVault && devVault ? `<div class="field"><span class="label">A mentésben nincsenek iratok. Mi legyen a telefonon lévő Iratok mappával?</span>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="vkeep" value="keep" checked><span>Megmarad</span></label>
+          <label><input type="radio" name="vkeep" value="wipe"><span>Törlődik</span></label>
+        </div></div>` : ""}`, null,
       `<button type="button" class="btn" data-yes>Visszaállítás</button>`);
-    form.querySelector("[data-yes]").onclick = async () => {
-      if (data.vault) { try { await Vault.importData(data.vault); } catch (e) { toast("Az iratokat nem sikerült visszaállítani."); } }
-      delete data.app; delete data.exported; delete data.vault;
-      BROKEN = null; S = normalize(data); save(); closeSheet(); tab = "home"; render(); toast("Adatok visszaállítva.");
+    const yes = form.querySelector("[data-yes]");
+    form.querySelectorAll('input[name="vkeep"]').forEach(x => x.addEventListener("change", () => {
+      const wipe = x.value === "wipe" && x.checked;
+      yes.textContent = wipe ? "Visszaállítás, iratok törlése" : "Visszaállítás";
+      yes.classList.toggle("danger", wipe);
+    }));
+    yes.onclick = async () => {
+      if (yes.disabled) return;
+      yes.disabled = true;
+      await restoreBackup(data, form.querySelector('input[name="vkeep"]:checked')?.value === "wipe");
     };
   };
   r.readAsText(file);

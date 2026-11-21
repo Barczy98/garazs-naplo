@@ -486,12 +486,20 @@ const Vault = (() => {
   }
   function shake() { const d = document.querySelector(".vpanel .pinbox"); if (d) { d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake"); } }
 
-  async function wipe() {
+  // a mappa törlése (fájlok és kulcsok) egy lépésben
+  async function clear() {
     lock();
     const db = await open();
-    await new Promise(res => { const t = db.transaction(["files", "meta"], "readwrite"); t.objectStore("files").clear(); t.objectStore("meta").clear(); t.oncomplete = res; });
-    db.close(); meta = null; failReset(); render(); toast("A mappa törölve. Most újra beállíthatod.");
+    try {
+      await new Promise((res, rej) => {
+        const t = db.transaction(["files", "meta"], "readwrite");
+        t.oncomplete = res; t.onerror = t.onabort = () => rej(t.error || new Error("abort"));
+        t.objectStore("files").clear(); t.objectStore("meta").clear();
+      });
+    } finally { db.close(); }
+    meta = null; failReset();
   }
+  async function wipe() { await clear(); render(); toast("A mappa törölve. Most újra beállíthatod."); }
 
   /* ---------- megjelenítés ---------- */
   const IC = {
@@ -580,17 +588,35 @@ const Vault = (() => {
     if (!meta) return null;
     return { meta: ser(meta), files: (await allFiles()).map(ser) };
   }
+  // a mentés Iratok részének ellenőrzése: a hiba szövege, vagy "" ha rendben van
+  function checkData(d) {
+    const isB = x => !!x && typeof x === "object" && typeof x.$b === "string" && /^[A-Za-z0-9+/]*={0,2}$/.test(x.$b);
+    if (!d || typeof d !== "object" || !d.meta || typeof d.meta !== "object" || !Array.isArray(d.files)) return "hiányos";
+    const m = d.meta;
+    if (!isB(m.salt) || !(Number(m.iter) > 0) || !m.pin || !isB(m.pin.iv) || !isB(m.pin.ct)) return "hiányzik a mappa kulcsa";
+    if (m.face && !(isB(m.face.credId) && isB(m.face.prfSalt) && isB(m.face.iv) && isB(m.face.ct))) return `hibás ${W.the} adata`;
+    const ids = new Set();
+    for (const f of d.files) {
+      if (!f || typeof f !== "object" || typeof f.id !== "string" || !f.id || ids.has(f.id)) return "egy irat azonosítója hibás";
+      ids.add(f.id);
+      if (!isB(f.miv) || !isB(f.mct) || !isB(f.iv) || !isB(f.data) || (f.thumb && !(isB(f.tiv) && isB(f.thumb)))) return "egy irat hiányos";
+    }
+    return "";
+  }
+  // Egy lépésben: előbb minden átalakítás (ha hibás, semmihez nem nyúlunk), utána egy tranzakció; hiba esetén a régi marad.
   async function importData(d) {
-    if (!d || !d.meta) return;
+    const recs = d.files.map(deser), m = deser(d.meta);
     lock();
     const db = await open();
-    await new Promise((res, rej) => {
-      const t = db.transaction(["files", "meta"], "readwrite");
-      const fs = t.objectStore("files"); fs.clear(); d.files.forEach(f => fs.put(deser(f)));
-      t.objectStore("meta").put(deser(d.meta), "vault");
-      t.oncomplete = res; t.onerror = () => rej(t.error);
-    });
-    db.close(); meta = await getMeta();
+    try {
+      await new Promise((res, rej) => {
+        const t = db.transaction(["files", "meta"], "readwrite");
+        t.oncomplete = res; t.onerror = t.onabort = () => rej(t.error || new Error("abort"));
+        try { const fs = t.objectStore("files"); fs.clear(); recs.forEach(r => fs.put(r)); t.objectStore("meta").put(m, "vault"); }
+        catch (e) { t.abort(); }
+      });
+    } finally { db.close(); }
+    meta = await getMeta(); failReset();
   }
 
   /* ---------- irat csatolása a lejáratokhoz (máshonnan, nem az Iratok fülről) ---------- */
@@ -641,5 +667,5 @@ const Vault = (() => {
   }
   const fileName = id => (master && files.find(f => f.id === id)?.name) || "";
 
-  return { init, html, unlockFace, hasFace, isOpen, isSetUp, exportData, importData, pick, openFile, fileName };
+  return { init, html, unlockFace, hasFace, isOpen, isSetUp, exportData, importData, checkData, clear, pick, openFile, fileName };
 })();
