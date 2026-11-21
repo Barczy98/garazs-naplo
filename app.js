@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.1";
+const APP_VERSION = "2.7.2";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -37,6 +37,13 @@ const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const parseDate = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const fmtDate = s => s ? s.replaceAll("-", ".") + "." : "–";
+// hónapok hozzáadása; hónap végén a cél hónap utolsó napjánál megáll (jan. 31. + 1 hónap = febr. 28., nem márc. 3.)
+const addMonths = (d, n) => {
+  const day = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + n);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d;
+};
 const fmtKm = n => Number(n || 0).toLocaleString("hu-HU") + " km";
 const fmtMoney = n => Number(n || 0).toLocaleString("hu-HU") + " lej";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -119,7 +126,7 @@ function serviceInfo(c, key) {
   if (!o.date) return { s: "none", txt: "nincs megadva", d: 1e9, sub: "koppints ide, és add meg az utolsó cserét", date: "", n: "–", u: "", frac: null };
   const dueKm = Number(o.km) + Number(o.everyKm);
   const leftKm = dueKm - Number(c.km);
-  const dd = parseDate(o.date); dd.setMonth(dd.getMonth() + Number(o.everyMonths));
+  const dd = addMonths(parseDate(o.date), Number(o.everyMonths));
   const leftDays = Math.round((dd - today()) / DAY);
   const totalDays = Math.max(1, Math.round((dd - parseDate(o.date)) / DAY));
   const warnKm = Math.max(1500, Number(o.everyKm) * 0.05);
@@ -877,7 +884,7 @@ const PRESETS = {
 };
 function addPeriod(base, months, days) {
   const d = parseDate(base);
-  if (months) d.setMonth(d.getMonth() + months);
+  if (months) addMonths(d, months);
   if (days) d.setDate(d.getDate() + days);
   return iso(d);
 }
