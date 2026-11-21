@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.3";
+const APP_VERSION = "2.7.4";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -86,14 +86,29 @@ function normalize(s) {
   if (!s.cars.some(c => c.id === s.sel)) s.sel = s.cars[0]?.id ?? null;
   return s;
 }
-let S;
-try { S = normalize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = emptyState(); }
+// Betöltés (2.7.4): ha a tárolt adat nem olvasható, nem indulunk csendben üresen, mert az első mentés felülírná.
+// Ilyenkor BROKEN = { raw }, a save() nem ír semmit, és a képernyő helyreállítást ajánl. Az eredeti adat egy példánya KEY-serult alatt.
+let BROKEN = null;
+function loadState() {
+  let raw;
+  try { raw = localStorage.getItem(KEY); } catch (e) { BROKEN = { raw: "" }; return emptyState(); }
+  if (raw === null) return emptyState(); // első indulás
+  try {
+    const s = JSON.parse(raw);
+    if (s && typeof s === "object" && Array.isArray(s.cars)) return normalize(s);
+  } catch (e) { /* lent: sérült */ }
+  BROKEN = { raw };
+  try { if (localStorage.getItem(KEY + "-serult") === null) localStorage.setItem(KEY + "-serult", raw); } catch (e) {}
+  return emptyState();
+}
+let S = loadState();
 let tab = "home";
 let prevTab = "home"; // a Beállításokból ide térünk vissza
 let logView = "service";   // Napló fül: service | fuel | costs
 let costYear = String(new Date().getFullYear());
 
 function save() {
+  if (BROKEN) return; // sérült adat mellett semmit nem írunk felül, amíg a felhasználó nem dönt
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast("Nem sikerült menteni: a telefon tárhelye megtelt?"); }
 }
@@ -281,7 +296,8 @@ const ICONS = {
 function render() {
   const c = car();
   let h = "";
-  if (tab === "settings") h = renderSettings();
+  if (BROKEN && tab !== "vault") h = renderBroken();
+  else if (tab === "settings") h = renderSettings();
   else if (tab === "vault") h = Vault.html();
   else if (!c) h = renderWelcome();
   else {
@@ -354,6 +370,27 @@ function renderWelcome() {
     <p class="hint">Utána beírhatod az RCA, rovinieta, ITP és a többi lejáratot, és bejegyezheted a szervizeket. Minden adat csak ezen a telefonon tárolódik.</p>
     <button class="btn" data-act="addcar">Autó hozzáadása</button>
   </div>`;
+}
+
+// a tárolt adat sérült: helyreállítási lehetőségek (az Iratok mappát nem érinti)
+function renderBroken() {
+  return `<div class="welcome broken">
+    <h1>Az adatok nem olvashatók</h1>
+    <p class="hint">A telefonon tárolt autóadatok megsérültek, ezért az app nem tudja betölteni őket. Semmit nem írt felül: az eredeti adat megvan. Az Iratok mappát ez nem érinti.</p>
+    <button class="btn" data-act="import">Visszaállítás mentésből</button>
+    <button class="btn ghost" data-act="brokenget">Sérült adat letöltése</button>
+    <button class="link" data-act="brokenreset">Újrakezdés üres adatokkal</button>
+  </div>`;
+}
+function brokenReset() {
+  const form = sheet(`<h2>Újrakezdés</h2><p>Az app üres adatokkal indul, a sérült adat helyére újat ír.</p>
+    <p class="hint">A sérült adat egy példányát az app félreteszi. Ha van mentésed, inkább azt állítsd vissza.</p>`, null,
+    `<button type="button" class="btn danger" data-yes>Újrakezdés</button>`);
+  form.querySelector("[data-yes]").onclick = () => {
+    try { localStorage.setItem(KEY + "-serult", BROKEN.raw); }
+    catch (e) { if (!BROKEN.downloaded) { toast("A sérült adatot nem sikerült félretenni. Előbb töltsd le, utána kezdheted újra."); return; } }
+    BROKEN = null; S = emptyState(); save(); closeSheet(); tab = "home"; render(); toast("Újrakezdve üres adatokkal.");
+  };
 }
 
 function renderHome(c, list) {
@@ -1220,7 +1257,7 @@ function importBackup(file) {
     form.querySelector("[data-yes]").onclick = async () => {
       if (data.vault) { try { await Vault.importData(data.vault); } catch (e) { toast("Az iratokat nem sikerült visszaállítani."); } }
       delete data.app; delete data.exported; delete data.vault;
-      S = normalize(data); save(); closeSheet(); tab = "home"; render(); toast("Adatok visszaállítva.");
+      BROKEN = null; S = normalize(data); save(); closeSheet(); tab = "home"; render(); toast("Adatok visszaállítva.");
     };
   };
   r.readAsText(file);
@@ -1273,6 +1310,8 @@ document.addEventListener("click", e => {
     case "addcost": costForm(c, null); break;
     case "export": exportBackup(); break;
     case "import": $("#importfile").click(); break;
+    case "brokenget": deliverFile("garazs-serult-adat.txt", "text/plain", BROKEN.raw, false).then(ok => { if (ok) BROKEN.downloaded = true; }); break;
+    case "brokenreset": brokenReset(); break;
   }
 });
 $("#importfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ""; });
