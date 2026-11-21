@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.5";
+const APP_VERSION = "2.8.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -896,7 +896,7 @@ function attachHtml(c, k) {
   if (!id) return `<div class="fgroup att"><button type="button" class="arow" data-att="add">${CLIP}<span class="lt"><span class="t">Irat csatolása</span><span class="s">pl. a kötvény vagy az igazolás az Iratok mappából</span></span>${CHEV}</button></div>`;
   const name = Vault.fileName(id);
   return `<div class="fgroup att">
-    <button type="button" class="arow" data-att="open">${CLIP}<span class="lt"><span class="t">${name ? esc(name) : "Csatolt irat"}</span><span class="s">megnyitás ${ANDROID ? "feloldással" : "Face ID-val vagy PIN-kóddal"}</span></span>${CHEV}</button>
+    <button type="button" class="arow" data-att="open">${CLIP}<span class="lt"><span class="t">${name ? esc(name) : "Csatolt irat"}</span><span class="s">megnyitás ${ANDROID ? "feloldással" : "Face ID-val vagy jelkóddal"}</span></span>${CHEV}</button>
     <button type="button" class="arow" data-att="change"><span class="lt"><span class="t">Másik irat csatolása</span></span></button>
     <button type="button" class="arow red" data-att="del"><span class="lt"><span class="t">Irat leválasztása</span></span></button></div>`;
 }
@@ -1227,15 +1227,28 @@ async function deliverFile(name, mime, text, isCalendar) {
 
 async function exportBackup() {
   const name = "garazs-mentes.json";   // mindig ugyanaz a név, így a régi mentés lecserélhető (a dátum a fájlban van)
-  let vault = null;
-  try { vault = await Vault.exportData(); } catch (e) { toast("Az iratok mappát nem sikerült a mentéshez olvasni."); }
+  let vault = null, noVault = false;
+  try { vault = await Vault.exportData(); }
+  catch (e) {
+    // 2.8.0: ha az iratokat nem sikerül kiolvasni, nem készül csendben iratok nélküli mentés
+    const go = await new Promise(res => {
+      const f = sheet(`<h2>Az iratok nem menthetők</h2><p>Az Iratok mappát most nem sikerült kiolvasni, ezért az iratok nem kerülnének bele a mentésbe.</p>
+        <p class="hint">Próbáld újra később (zárd be teljesen az appot, és nyisd meg újra). Ha most mindenképp menteni szeretnél, csak az autóadatok kerülnek a fájlba.</p>`, null,
+        `<button type="button" class="btn ghost" data-only>Mentés iratok nélkül</button>`);
+      f.querySelector("[data-only]").onclick = () => res(true);
+      f.querySelector("[data-close]").addEventListener("click", () => res(false));
+    });
+    if (!go) return;
+    noVault = true;
+  }
   const data = JSON.stringify({ ...S, lastBackup: undefined, vault, app: "garazs-naplo", format: BACKUP_FORMAT, exported: new Date().toISOString() });
   const mb = (data.length / 1024 / 1024).toLocaleString("hu-HU", { maximumFractionDigits: 1 });
   // a megosztás ablakot új koppintásból kell nyitni, ezért egy gombbal kérjük
-  const form = sheet(`<h2>Mentés kész</h2><p>${S.cars.length} autó${vault ? `, ${vault.files.length} irat (titkosítva)` : ""}, ${mb} MB.</p>
+  const form = sheet(`<h2>Mentés kész</h2><p>${S.cars.length} autó${vault ? `, ${vault.files.length} irat (titkosítva)` : noVault ? ", iratok nélkül" : ""}, ${mb} MB.</p>
     <p class="hint">${ANDROID
       ? "Mentsd a Google Drive-ra vagy a Letöltések közé. Ha a régi mentés is ott van, töröld, hogy csak egy maradjon."
-      : "Mentsd a Fájlokba vagy az iCloud Drive-ra, mindig ugyanabba a mappába. Ha rákérdez, válaszd a „Csere” gombot: így mindig csak egy mentésed lesz."}${vault ? " Az iratok visszaállításához a mappa PIN-kódja kell." : ""}</p>`, null,
+      : "Mentsd a Fájlokba vagy az iCloud Drive-ra, mindig ugyanabba a mappába. Ha rákérdez, válaszd a „Csere” gombot: így mindig csak egy mentésed lesz."}${vault ? ` Az iratok visszaállításához a mappa ${Vault.isCode() ? "jelkódja" : "PIN-kódja"} kell.` : ""}</p>
+    ${vault && !Vault.isCode() ? `<p class="hint"><b>Az Iratok mappát még 4 jegyű PIN-kód védi.</b> Ha a mentésfájl illetéktelen kézbe kerül, ez gyorsan kipróbálható. Előbb cseréld jelkódra az Iratok fülön, utána ments.</p>` : ""}`, null,
     `<button type="button" class="btn" data-go>${ANDROID ? "Mentés" : "Mentés a Fájlokba"}</button>`);
   form.querySelector("[data-go]").onclick = async () => {
     const ok = await deliverFile(name, "application/json", data, false);
@@ -1316,7 +1329,7 @@ function importBackup(file) {
     if (err) return restoreError(err);
     const hasVault = !!data.vault, devVault = Vault.isSetUp();
     const form = sheet(`<h2>Visszaállítás</h2><p>A mentésben ${data.cars.length} autó van (${data.cars.map(c => esc(c.name)).join(", ")})${hasVault ? ` és ${data.vault.files.length} irat` : ""}, készült: ${fmtDate((data.exported || "").slice(0, 10))}</p>
-      <p class="hint">A visszaállítás lecseréli a jelenlegi autóadatokat.${hasVault ? `${devVault ? " A telefonon lévő Iratok mappa is lecserélődik a mentésben lévőre." : ""} Az iratok megnyitásához a mentéskori PIN-kód kell.` : ""}</p>
+      <p class="hint">A visszaállítás lecseréli a jelenlegi autóadatokat.${hasVault ? `${devVault ? " A telefonon lévő Iratok mappa is lecserélődik a mentésben lévőre." : ""} Az iratok megnyitásához a mentéskori jelkód (régebbi mentésnél a PIN-kód) kell.` : ""}</p>
       ${!hasVault && devVault ? `<div class="field"><span class="label">A mentésben nincsenek iratok. Mi legyen a telefonon lévő Iratok mappával?</span>
         <div class="seg" role="radiogroup">
           <label><input type="radio" name="vkeep" value="keep" checked><span>Megmarad</span></label>

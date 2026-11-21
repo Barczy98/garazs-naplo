@@ -1,7 +1,9 @@
 "use strict";
-/* Iratok mappa: képek és PDF-ek titkosítva, Face ID-val vagy 4 jegyű PIN-nel nyitható.
+/* Iratok mappa: képek és PDF-ek titkosítva, Face ID-val vagy jelkóddal nyitható.
+   - Jelkód (2.8.0): legalább 8 karakter, betűvel (meta.kind = "code"). A 2.8.0 előtti mappák 4 jegyű PIN-nel
+     nyílnak (nincs meta.kind); ezek tovább működnek, de nyitott mappában az app kéri a cserét jelkódra.
    - A fájlokat egy véletlen mesterkulcs titkosítja (AES-GCM 256).
-   - A mesterkulcsot a PIN-ből származtatott kulcs (PBKDF2) és, ha be van kapcsolva,
+   - A mesterkulcsot a jelkódból/PIN-ből származtatott kulcs (PBKDF2) és, ha be van kapcsolva,
      a Face ID-s passkey PRF-kimenetéből származtatott kulcs (HKDF) is lezárja.
    - Nyitott állapotban a kulcs csak a memóriában van; zárolás után eldobjuk. */
 const Vault = (() => {
@@ -67,6 +69,8 @@ const Vault = (() => {
   const isSetUp = () => !!meta;
   const isOpen = () => !!master;
   const hasFace = () => !!(meta && meta.face);
+  const isCode = () => !!(meta && meta.kind === "code"); // jelkód; különben a régi 4 jegyű PIN
+  const K = () => isCode() ? { n: "jelkód", acc: "jelkódot", ins: "jelkóddal" } : { n: "PIN-kód", acc: "PIN-kódot", ins: "PIN-kóddal" };
   const faceSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
 
   function lock() {
@@ -128,7 +132,7 @@ const Vault = (() => {
   async function setup(p) {
     master = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
     const salt = rnd(16);
-    meta = { v: 1, salt, iter: PIN_ITER, pin: await wrapMaster(await pinKey(p, salt, PIN_ITER)), face: null };
+    meta = { v: 1, kind: "code", salt, iter: PIN_ITER, pin: await wrapMaster(await pinKey(p, salt, PIN_ITER)), face: null };
     await putMeta(meta);
   }
   async function unlockPin(p) {
@@ -163,7 +167,7 @@ const Vault = (() => {
       })
       .catch(e => {
         faceBusy = false;
-        if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} most nem sikerült. Használd a PIN-kódot.`);
+        if (e.name !== "NotAllowedError" && e.name !== "AbortError") toast(`${W.The} most nem sikerült. Használd a ${K().acc}.`);
         if (pendingCb) pinFlow(); else render();
       });
   }
@@ -182,7 +186,7 @@ const Vault = (() => {
       extensions: prfOptions(prfSalt) } })
       .then(async cred => {
         const ext = cred.getClientExtensionResults().prf;
-        if (!ext || ext.enabled === false) { toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. Frissítsd a rendszert, addig a PIN-kód működik.`); return; }
+        if (!ext || ext.enabled === false) { toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. Frissítsd a rendszert, addig a ${K().n} működik.`); return; }
         const credId = new Uint8Array(cred.rawId);
         if (ext.results?.first) return saveFace(credId, prfSalt, ext.results.first);
         // Néhány iOS verzió csak egy második Face ID után adja ki a kulcsot.
@@ -200,7 +204,7 @@ const Vault = (() => {
         allowCredentials: [{ type: "public-key", id: credId, transports: ["internal", "hybrid"] }], extensions: prfOptions(prfSalt) } })
         .then(cred => {
           const out = cred.getClientExtensionResults().prf?.results?.first;
-          if (!out) { closeSheet(); toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. A PIN-kód működik.`); return; }
+          if (!out) { closeSheet(); toast(`Ez az ${W.os}-verzió még nem támogatja ${W.acc} ehhez. A ${K().n} működik.`); return; }
           closeSheet(); return saveFace(credId, prfSalt, out);
         })
         .catch(() => { toast(`${W.The} megerősítése nem sikerült.`); });
@@ -212,7 +216,7 @@ const Vault = (() => {
     await putMeta(meta); pendingFace = null;
     toast(`${W.Name} bekapcsolva.`); render();
   }
-  async function disableFace() { meta.face = null; await putMeta(meta); toast(`${W.Name} kikapcsolva. A mappa PIN-kóddal nyílik.`); render(); }
+  async function disableFace() { meta.face = null; await putMeta(meta); toast(`${W.Name} kikapcsolva. A mappa ${K().ins} nyílik.`); render(); }
 
   /* ---------- PDF megjelenítés (beépített pdf.js, internet nélkül is) ---------- */
   let pdfReady = null;
@@ -471,18 +475,49 @@ const Vault = (() => {
   }
   const keypad = () => `<div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button type="button" data-k="${n}">${n}</button>`).join("")}
     <span></span><button type="button" data-k="0">0</button><button type="button" data-k="del" aria-label="Utolsó számjegy törlése"><svg viewBox="0 0 24 24"><path d="M9 6h11v12H9l-6-6z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg></button></div>`;
-  function newPinFlow(after) {
-    pinPad("Új PIN-kód", `Adj meg egy 4 jegyű kódot. Ezzel nyílik a mappa, ha ${W.the} nem működik.`, p1 => {
-      pinPad("PIN-kód még egyszer", "Ellenőrzésképp írd be újra.", async p2 => {
-        if (p1 !== p2) { toast("A két kód nem egyezik. Kezdjük újra."); return newPinFlow(after); }
-        closeSheet(); await after(p1);
-      });
+  /* ---------- jelkód (2.8.0): beállítás, csere, feloldás; a meglévő ablak (sheet) mezőivel ---------- */
+  const CODE_ATTRS = 'type="password" autocapitalize="off" autocorrect="off" spellcheck="false" required';
+  const codeOk = p => p.length >= 8 && /\p{L}/u.test(p);
+  function newCodeFlow(after, title = "Új jelkód") {
+    const form = sheet(`<h2>${title}</h2>
+      <p class="hint">Legalább 8 karakter, legyen benne betű is. Ezzel nyílik a mappa, ha ${W.the} nem működik, és ez kell a mentésből való visszaállításhoz is. Ha elfelejted, az iratok nem nyithatók ki.</p>
+      ${field("vnew", "Jelkód", `${CODE_ATTRS} autocomplete="new-password"`)}
+      ${field("vnew2", "Jelkód még egyszer", `${CODE_ATTRS} autocomplete="new-password"`)}`, f => {
+      if (!codeOk(f.vnew)) { toast("A jelkód legyen legalább 8 karakter, és legyen benne betű is."); return false; }
+      if (f.vnew !== f.vnew2) { toast("A két jelkód nem egyezik."); return false; }
+      closeSheet(); after(f.vnew); return false;
     });
+    setTimeout(() => { const i = form.querySelector("#f-vnew"); if (i) i.focus(); }, 50);
   }
-  async function changePin(p) {
+  // a régi PIN cseréje vagy a jelkód módosítása (csak nyitott mappánál; a mesterkulcs és a fájlok nem változnak)
+  async function changeCode(p) {
     const salt = rnd(16);
-    meta.salt = salt; meta.iter = PIN_ITER; meta.pin = await wrapMaster(await pinKey(p, salt, PIN_ITER));
-    await putMeta(meta); toast("PIN-kód módosítva.");
+    meta.salt = salt; meta.iter = PIN_ITER; meta.kind = "code"; meta.pin = await wrapMaster(await pinKey(p, salt, PIN_ITER));
+    await putMeta(meta); render();
+    toast("Jelkód beállítva. Készíts új mentést: a korábbi mentés még a régi kóddal nyílik.");
+  }
+  // feloldás jelkóddal
+  function codeSheet() {
+    const form = sheet(`<h2>Iratok feloldása</h2><p class="hint">Írd be a mappa jelkódját.</p>
+      ${field("vcode", "Jelkód", `${CODE_ATTRS} autocomplete="current-password"`)}`, f => { tryCode(form, f.vcode); return false; });
+    const go = form.querySelector(".ssave"); if (go) go.textContent = "Nyitás";
+    form.querySelector("[data-close]").addEventListener("click", () => { pendingCb = null; });
+    setTimeout(() => { const i = form.querySelector("#f-vcode"); if (i) i.focus(); }, 50);
+  }
+  async function tryCode(form, p) {
+    if (busy) return;
+    const f = failState();
+    if (f.until > Date.now()) { toast(`Túl sok hibás próbálkozás. Várj ${Math.ceil((f.until - Date.now()) / 1000)} másodpercet.`); return; }
+    busy = true;
+    const go = form.querySelector(".ssave"); if (go) { go.disabled = true; go.textContent = "Nyitás..."; }
+    try {
+      master = await unwrapMaster(await pinKey(p, meta.salt, meta.iter), meta.pin);
+      busy = false; closeSheet(); await afterUnlock();
+    } catch (e) {
+      busy = false; if (go) { go.disabled = false; go.textContent = "Nyitás"; }
+      const s = failAdd(), i = form.querySelector("#f-vcode"); if (i) { i.value = ""; i.focus(); }
+      toast(s.n >= 5 ? "Hibás jelkód. Kis várakozás következik." : `Hibás jelkód. Még ${5 - s.n} próbálkozás várakozás nélkül.`);
+    }
   }
   function shake() { const d = document.querySelector(".vpanel .pinbox"); if (d) { d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake"); } }
 
@@ -517,7 +552,7 @@ const Vault = (() => {
     if (!isSetUp()) return `<h1 class="pagetitle">Iratok</h1>
       <div class="vpanel vintro">${svg("folder", "vbig")}
         <h2>Zárolt mappa a fontos papíroknak</h2>
-        <p>Jogosítvány, forgalmi, biztosítási kötvény: fotó vagy PDF. Titkosítva, csak ezen a telefonon, ${W.ins} vagy PIN-kóddal nyílik.</p>
+        <p>Jogosítvány, forgalmi, biztosítási kötvény: fotó vagy PDF. Titkosítva, csak ezen a telefonon, ${W.ins} vagy jelkóddal nyílik.</p>
         <button class="btn" data-v="setup">Mappa beállítása</button></div>`;
 
     if (!isOpen()) return `<h1 class="pagetitle">Iratok</h1>
@@ -525,16 +560,17 @@ const Vault = (() => {
         <div class="vpanel" data-v="${hasFace() ? "face" : ""}">
           ${svg("lock", "vbig")}
           <p class="vmsg">${busy ? "Nyitás..." : faceBusy ? "Nézz a telefonra..." : "Zárolva"}</p>
-          <div class="pinbox" aria-label="PIN-kód, ${pin.length} számjegy beírva">${[0, 1, 2, 3].map(i => `<span class="${i < pin.length ? "on" : ""}"></span>`).join("")}</div>
+          ${isCode() ? "" : `<div class="pinbox" aria-label="PIN-kód, ${pin.length} számjegy beírva">${[0, 1, 2, 3].map(i => `<span class="${i < pin.length ? "on" : ""}"></span>`).join("")}</div>`}
         </div>
         ${hasFace() ? `<button class="btn wide faceid" data-v="face">${svg(AND ? "finger" : "face")}Nyitás ${W.ins}</button>` : ""}
-        ${keypad()}
-        <button class="link" data-v="forgot">Elfelejtettem a PIN-kódot</button>
+        ${isCode() ? `<button class="btn wide${hasFace() ? " ghost" : ""}" data-v="code">Nyitás jelkóddal</button>` : keypad()}
+        <button class="link" data-v="forgot">Elfelejtettem a ${K().acc}</button>
       </div>`;
 
     let h = `<div class="vhead"><h1>Iratok</h1><button class="iconbtn" data-v="lock" aria-label="Mappa zárolása">${svg("lock")}</button></div>
       <p class="vstatus"><span class="vdot"></span>Nyitva. Bezáródik, ha 2 percig nem használod, vagy ha fél percnél tovább kilépsz.</p>`;
-    if (!hasFace() && faceSupported()) h += `<button class="vtip" data-v="faceon">${svg(AND ? "finger" : "face")}<span><b>Kapcsold be ${W.acc}</b><small>Így a mappa magától nyílik, nem kell PIN-kódot beírni.</small></span></button>`;
+    if (!isCode()) h += `<button class="vtip" data-v="pin">${svg("lock")}<span><b>Cseréld a 4 jegyű PIN-kódot jelkódra</b><small>4 számjegy gyorsan kipróbálható, ha a mentésed illetéktelen kézbe kerül. A jelkód legalább 8 karakter, betűvel.</small></span></button>`;
+    if (!hasFace() && faceSupported()) h += `<button class="vtip" data-v="faceon">${svg(AND ? "finger" : "face")}<span><b>Kapcsold be ${W.acc}</b><small>Így a mappa magától nyílik, nem kell ${K().acc} beírni.</small></span></button>`;
     h += `<label class="vadd"><input type="file" id="vfile" accept="image/*,application/pdf" multiple hidden>${svg("plus")}<span><b>Fájl hozzáadása</b><small>Fotó, kép vagy PDF</small></span></label>`;
     h += files.length ? `<div class="rows vlist">${files.map(f => `<button class="vrow" data-vf="${f.id}">
         <span class="vth">${f.thumbUrl ? `<img src="${f.thumbUrl}" alt="">` : `<span class="vpdf">PDF</span>`}</span>
@@ -542,7 +578,7 @@ const Vault = (() => {
         ${svg("chev", "vchev")}</button>`).join("")}</div>`
       : `<p class="hint vempty">Még nincs irat. Kezdd a jogosítvánnyal vagy az RCA kötvénnyel.</p>`;
     h += `<div class="vfoot">${hasFace() ? `<span>${W.Name} bekapcsolva</span><button class="link" data-v="faceoff">Kikapcsolás</button>` : ""}
-      <button class="link" data-v="pin">PIN-kód módosítása</button></div>`;
+      <button class="link" data-v="pin">${isCode() ? "Jelkód módosítása" : "PIN-kód cseréje jelkódra"}</button></div>`;
     return h;
   }
   function render() { if (typeof window.render === "function") window.render(); }
@@ -552,7 +588,7 @@ const Vault = (() => {
     const b = e.target.closest("[data-v],[data-vf],[data-k]");
     if (!b || b.closest("#sheet")) return;
     if (b.dataset.vf) return view(b.dataset.vf);
-    if (b.dataset.k && !master && meta) {
+    if (b.dataset.k && !master && meta && !isCode()) {
       if (busy) return;
       const k = b.dataset.k;
       if (k === "del") pin = pin.slice(0, -1); else if (pin.length < 4) pin += k;
@@ -561,15 +597,16 @@ const Vault = (() => {
       return;
     }
     switch (b.dataset.v) {
-      case "setup": newPinFlow(async p => { await setup(p); await afterUnlock(); if (faceSupported()) toast(`Kész. Most kapcsold be ${W.acc} is.`); }); break;
+      case "setup": newCodeFlow(async p => { await setup(p); await afterUnlock(); if (faceSupported()) toast(`Kész. Most kapcsold be ${W.acc} is.`); }); break;
       case "face": unlockFace(); break;
+      case "code": codeSheet(); break;
       case "lock": lock(); break;
       case "faceon": enableFace(); break;
       case "faceoff": disableFace(); break;
-      case "pin": newPinFlow(changePin); break;
+      case "pin": if (master) newCodeFlow(changeCode, isCode() ? "Új jelkód" : "Jelkód beállítása"); break;
       case "forgot": {
-        const form = sheet(`<h2>Elfelejtett PIN-kód</h2><p>A fájlok titkosítva vannak, ezért PIN-kód${hasFace() ? " vagy " + W.Name.toLowerCase() : ""} nélkül nem lehet kinyitni őket.</p>
-          <p class="hint">${hasFace() ? `Próbáld ${W.acc}: nyitás után a mappában új PIN-kódot állíthatsz be. ` : ""}Ha nincs más mód, törölheted a mappát az összes fájllal együtt, és újrakezdheted.</p>`, null,
+        const form = sheet(`<h2>Elfelejtett ${K().n}</h2><p>A fájlok titkosítva vannak, ezért ${K().n}${hasFace() ? " vagy " + W.Name.toLowerCase() : ""} nélkül nem lehet kinyitni őket.</p>
+          <p class="hint">${hasFace() ? `Próbáld ${W.acc}: nyitás után a mappában új jelkódot állíthatsz be. ` : ""}Ha nincs más mód, törölheted a mappát az összes fájllal együtt, és újrakezdheted.</p>`, null,
           `<button type="button" class="btn danger" data-wipe>Mappa törlése</button>`);
         form.querySelector("[data-wipe]").onclick = () => confirmIn(form, "Biztosan törlöd a mappát és benne az összes fájlt? Ez nem vonható vissza.", () => { wipe(); });
         break;
@@ -628,6 +665,7 @@ const Vault = (() => {
     if (hasFace()) unlockFace(); else pinFlow();
   }
   function pinFlow() {
+    if (isCode()) return codeSheet();
     pinPad("Iratok feloldása", "Írd be a mappa PIN-kódját.", async p => {
       const f = failState();
       if (f.until > Date.now()) { closeSheet(); pendingCb = null; toast(`Túl sok hibás próbálkozás. Várj ${Math.ceil((f.until - Date.now()) / 1000)} másodpercet.`); return; }
@@ -667,5 +705,5 @@ const Vault = (() => {
   }
   const fileName = id => (master && files.find(f => f.id === id)?.name) || "";
 
-  return { init, html, unlockFace, hasFace, isOpen, isSetUp, exportData, importData, checkData, clear, pick, openFile, fileName };
+  return { init, html, unlockFace, hasFace, isOpen, isSetUp, isCode, exportData, importData, checkData, clear, pick, openFile, fileName };
 })();
