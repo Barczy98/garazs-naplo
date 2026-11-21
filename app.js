@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.7.2";
+const APP_VERSION = "2.7.3";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -1084,7 +1084,7 @@ function exportCalendar(cars, only, personal, keys, update) {
       ${ANDROID ? `<a class="gcal" href="${googleCalUrl(e)}" target="_blank" rel="noopener" data-g="${esc(e.uid)}" aria-label="${esc(e.title)} a Google Naptárba">Google</a>` : ""}</div>`).join("")}</div>
     <div class="calwhen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
       <span>Értesítés ${when}. <button type="button" class="link" data-remset>Módosítás</button></span></div>
-    ${ANDROID ? `<p class="hint"><b>Pixel, Xiaomi és a legtöbb Android (Google Naptár):</b> koppints a sorok melletti Google gombra, eseményenként, és ott mentsd el.${update ? " A régit előbb töröld a naptárból, mert a Google Naptár nem cseréli le magától." : ""} A Google Naptár a saját alapértelmezett értesítését használja.</p>` : ""}
+    ${ANDROID ? `<p class="hint"><b>Pixel, Xiaomi és a legtöbb Android (Google Naptár):</b> koppints a sorok melletti Google gombra, eseményenként, és ott mentsd el.${update ? " A régit előbb töröld a naptárból, mert a Google Naptár nem cseréli le magától." : ""} A Google Naptár a saját alapértelmezett értesítését használja. A Google csak az esemény nevét és dátumát kapja meg, a rendszámot és a megjegyzést nem.</p>` : ""}
     <button type="button" class="btn wide" data-go>${ANDROID ? "Naptárfájl letöltése (Samsung Naptár)" : update ? "Frissítés a Naptárban" : "Hozzáadás a Naptárhoz"}</button>
     <p class="hint">${ANDROID ? "<b>Samsung Naptár:</b> nyisd meg a letöltött fájlt, és mentsd a naptárba. Így az értesítések is beállítva érkeznek." : "A megnyíló ablakban válaszd az <b>Összes hozzáadása</b> lehetőséget."}</p>
   </div></div>`;
@@ -1107,11 +1107,12 @@ function exportCalendar(cars, only, personal, keys, update) {
 }
 
 // Google Naptár esemény-sablon link (Androidon a Google Naptár nem tud naptárfájlt megnyitni)
+// A link a Google-hoz megy, ezért csak a cím és a dátum kerül bele; a rendszám és a megjegyzés (e.desc) nem.
 function googleCalUrl(e) {
   const d = parseDate(e.date), n = parseDate(e.date); n.setDate(n.getDate() + 1);
   const ymd = x => iso(x).replace(/-/g, "");
   return "https://calendar.google.com/calendar/render?action=TEMPLATE" +
-    "&text=" + encodeURIComponent(e.title) + "&dates=" + ymd(d) + "/" + ymd(n) + "&details=" + encodeURIComponent(e.desc || "");
+    "&text=" + encodeURIComponent(e.title) + "&dates=" + ymd(d) + "/" + ymd(n) + "&details=" + encodeURIComponent("Garázs napló");
 }
 
 /* ---------- a Naptárban maradt régi dátumok ---------- */

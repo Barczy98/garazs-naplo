@@ -9,7 +9,7 @@ Személyes webapp (PWA) autók nyilvántartására: lejáratok, megújítás, ka
 A két repó fájljai azonosak, **egyetlen kivétel a `config.js`** (platform, tárhelynevek). Minden módosítást mindkét repóba fel kell tölteni: a módosított fájlokat át kell másolni a másik repóba, a `config.js`-t soha. Ha a felhasználó kifejezetten csak az egyik változatot kéri, csak azt kell módosítani.
 
 Platformfüggő viselkedés az `ANDROID` (app.js) és `AND` (vault.js) kapcsolóval:
-- Naptár: iPhone-on .ics fájl (állandó UID + SEQUENCE, így a régi esemény lecserélődik); Androidon soronként Google Naptár link (Pixel, Xiaomi, legtöbb Android) + .ics letöltés a Samsung Naptárhoz.
+- Naptár: iPhone-on .ics fájl (állandó UID + SEQUENCE, így a régi esemény lecserélődik); Androidon soronként Google Naptár link (Pixel, Xiaomi, legtöbb Android) + .ics letöltés a Samsung Naptárhoz. A Google-linkbe (2.7.3) csak az esemény címe és dátuma kerül, leírásként „Garázs napló”; rendszám és megjegyzés nem megy a Google-hoz. Az .ics helyben marad, abban maradhat.
 - Iratok feloldás szövege: „Face ID” / „ujjlenyomatos feloldás”.
 - Szövegekben „iPhone” / „telefon”.
 
