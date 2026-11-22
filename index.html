@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Garázs">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#efeeea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
@@ -18,6 +18,26 @@
 <script>try{var t=(JSON.parse(localStorage.getItem(APP_CONFIG.storageKey))||{}).settings;t=t&&t.theme;if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
+<!-- selyem háttér (2.9): színei a style.css --silk-* változóiból, világos és sötét módban mások -->
+<svg class="silk" aria-hidden="true" viewBox="0 0 390 844" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="sh1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--silk-hi);stop-opacity:0"/><stop offset=".45" style="stop-color:var(--silk-hi);stop-opacity:var(--silk-hi-a)"/><stop offset="1" style="stop-color:var(--silk-hi);stop-opacity:0"/></linearGradient>
+    <linearGradient id="sh2" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--silk-hi);stop-opacity:0"/><stop offset=".5" style="stop-color:var(--silk-hi);stop-opacity:var(--silk-hi-a)"/><stop offset="1" style="stop-color:var(--silk-hi);stop-opacity:0"/></linearGradient>
+    <linearGradient id="sl1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--silk-lo);stop-opacity:0"/><stop offset=".5" style="stop-color:var(--silk-lo);stop-opacity:var(--silk-lo-a)"/><stop offset="1" style="stop-color:var(--silk-lo);stop-opacity:0"/></linearGradient>
+    <linearGradient id="sl2" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--silk-lo);stop-opacity:0"/><stop offset=".5" style="stop-color:var(--silk-lo);stop-opacity:var(--silk-lo-a)"/><stop offset="1" style="stop-color:var(--silk-lo);stop-opacity:0"/></linearGradient>
+    <filter id="sb10" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+    <filter id="sb2"><feGaussianBlur stdDeviation="1.4"/></filter>
+  </defs>
+  <path d="M-40 90 C 120 170, 40 360, -30 560" stroke="url(#sl1)" stroke-width="70" fill="none" filter="url(#sb10)"/>
+  <path d="M-60 40 C 120 120, 40 320, -40 520" stroke="url(#sh1)" stroke-width="66" fill="none" filter="url(#sb10)"/>
+  <path d="M-20 10 C 140 140, 90 330, -10 560" stroke="url(#sh1)" stroke-width="3" fill="none" filter="url(#sb2)"/>
+  <path d="M-30 70 C 110 170, 70 360, 0 540" stroke="url(#sh1)" stroke-width="2" fill="none" filter="url(#sb2)"/>
+  <path d="M460 360 C 320 450, 380 590, 270 670" stroke="url(#sl2)" stroke-width="80" fill="none" filter="url(#sb10)"/>
+  <path d="M440 330 C 300 420, 360 560, 250 640" stroke="url(#sh2)" stroke-width="76" fill="none" filter="url(#sb10)"/>
+  <path d="M430 380 C 320 460, 360 580, 240 660" stroke="url(#sh2)" stroke-width="2.5" fill="none" filter="url(#sb2)"/>
+  <path d="M450 420 C 340 500, 380 600, 270 690" stroke="url(#sh2)" stroke-width="2" fill="none" filter="url(#sb2)"/>
+  <path d="M470 470 C 360 540, 400 640, 300 720" stroke="url(#sh2)" stroke-width="1.5" fill="none" filter="url(#sb2)"/>
+</svg>
 <div class="app" id="app"></div>
 <nav class="tabs" role="tablist" id="tabbar"><div class="tabs-in" id="tabs"></div></nav>
 <div id="sheet"></div>

@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.8.0";
+const APP_VERSION = "2.9.0";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -195,27 +195,6 @@ const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
 const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
 const shortDate = s => parseDate(s).toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
-/* ---------- „+” menü az Áttekintésen: lebegő menü a gomb alatt ---------- */
-function plusMenu(anchor) {
-  const old = document.getElementById("pmenu"); if (old) { old.remove(); return; }
-  const items = [["km", "Km frissítése", "gauge"], null, ["addfuel", "Új tankolás", "fuel"], ["addlog", "Új szervizbejegyzés", "wrench"], ["addcost", "Új kiadás", "receipt"]];
-  const wrap = document.createElement("div");
-  wrap.id = "pmenu"; wrap.className = "pmenu-bg";
-  const r = anchor.getBoundingClientRect();
-  wrap.innerHTML = `<div class="pmenu" role="menu" style="top:${Math.round(r.bottom + 8)}px;right:${Math.max(12, Math.round(innerWidth - r.right))}px">
-    ${items.map(it => it ? `<button role="menuitem" data-pm="${it[0]}">${it[1]}<svg viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[it[2]]}</svg></button>` : '<span class="pmsep"></span>').join("")}</div>`;
-  document.body.appendChild(wrap);
-  anchor.classList.add("on");
-  const close = () => { wrap.remove(); anchor.classList.remove("on"); };
-  wrap.addEventListener("click", e => {
-    const it = e.target.closest("[data-pm]");
-    close();
-    if (!it) return;
-    const c = car(); if (!c) return;
-    ({ km: () => kmSheet(c), addfuel: () => fuelForm(c, null), addlog: () => logForm(c, null), addcost: () => costForm(c, null) })[it.dataset.pm]();
-  });
-}
-
 /* ---------- km-állás: ellenőrzés beíráskor és emlékeztető ---------- */
 const KM_REMIND_DAYS = 14;
 const kmAge = c => c.kmDate ? Math.round((today() - parseDate(c.kmDate)) / DAY) : Infinity;
@@ -253,13 +232,15 @@ const kmBlocked = (form, c, date, km, selfId) => {
   if (m) { kmGuard(form, m); return true; }
   return false;
 };
-function kmSheet(c, intro) {
+function kmSheet(c, intro, photo) {
   const form = sheet(`<h2>Km-óra állás</h2><p class="hint">${intro || `${esc(c.name)}, eddig ${fmtKm(c.km)}`}</p>
     ${field("km", "Jelenlegi km", `type="number" inputmode="numeric" required min="0" data-odo value="${c.km}"`)}`,
     f => {
       if (kmBlocked(form, c, iso(today()), Number(f.km), null)) return false;
       c.km = Number(f.km); c.kmDate = iso(today()); toast("Km-állás frissítve.");
     });
+  // a bal felső kamera gombról: rögtön a fényképezés (ugyanabban a koppintásban, különben a telefon nem engedi)
+  if (photo) { const b = form.querySelector(".odo"); if (b) { b.click(); return; } }
   setTimeout(() => { const i = form.querySelector("#f-km"); if (i) { i.focus(); i.select(); } }, 60);
 }
 // ha régen frissült a km, megnyitáskor (naponta egyszer, autónként) rákérdez
@@ -291,6 +272,7 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   cal: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  camera: '<path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 
 function render() {
@@ -303,13 +285,13 @@ function render() {
   else {
     const list = items(c);
     const circ = (act, ic, label) => `<button class="circ" data-act="${act}" aria-label="${label}"><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></button>`;
-    const extra = tab === "home" ? circ("plusmenu", "plus", "Új bejegyzés")
+    const extra = tab === "home" ? circ("kmphoto", "camera", "Km-óra fotózása")
       : tab === "docs" ? circ("calcar", "cal", "Lejáratok a Naptárba")
       : circ(logView === "fuel" ? "addfuel" : logView === "costs" ? "addcost" : "addlog", "plus", "Új bejegyzés");
-    const carLine = `${esc(c.model || c.name)}${c.year ? ", " + esc(c.year) : ""}`;
-    h += `<div class="topbar">${plates(c)}<div class="navbtns">${extra}${circ("settings", "settings", "Beállítások")}</div></div>`;
+    const carLine = `${esc(c.model || c.name)}${c.year ? " · " + esc(c.year) : ""}`;
+    h += `<div class="topbar">${extra}${carPill(c)}${circ("settings", "settings", "Beállítások")}</div>`;
     h += tab === "home"
-      ? `<div class="carname"><h1>${esc(c.model || c.name)}</h1><p class="hint">${esc(c.name)}${c.year ? ", " + esc(c.year) : ""}</p></div>`
+      ? `<div class="carname"><h1>${esc(c.model || c.name)}</h1><p class="hint">${esc(c.name)}${c.year ? " · " + esc(c.year) : ""}</p></div>`
       : `<div class="carname"><h1>${tab === "docs" ? "Lejáratok" : "Napló"}</h1><p class="hint">${carLine}</p></div>`;
     if (tab === "home") h += renderHome(c, list);
     if (tab === "docs") h += renderDocs(c, list);
@@ -324,11 +306,28 @@ function render() {
 function plateHtml(x) {
   return `<span class="eu">RO</span><span class="nr">${esc(x.plate || x.name)}</span>`;
 }
-function plates(c) {
-  return `<div class="plates">${S.cars.map(x => {
-    const bad = [...items(x), ...personalItems(x)].some(i => i.s === "bad");
-    return `<button class="plate" aria-pressed="${x.id === c?.id}" data-car="${x.id}" aria-label="${esc(x.name)}${bad ? ", lejárt tétel" : ""}">${plateHtml(x)}${bad ? '<span class="dot"></span>' : ""}</button>`;
-  }).join("")}<button class="plate add" data-act="addcar">+ autó</button></div>`;
+// fejléc közepén a kiválasztott autó rendszáma; koppintásra autóválasztó. Piros pötty, ha egy másik autónál lejárt valami.
+const carBad = x => [...items(x), ...personalItems(x)].some(i => i.s === "bad");
+function carPill(c) {
+  const other = S.cars.some(x => x.id !== c.id && carBad(x));
+  return `<button class="carpill" data-act="cars" aria-label="Autó: ${esc(c.name)}. Autó váltása${other ? ", egy másik autónál lejárt tétel van" : ""}">
+    <span class="plate">${plateHtml(c)}${carBad(c) ? '<span class="dot"></span>' : ""}</span>
+    <svg class="pchev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>${other ? '<span class="pdot"></span>' : ""}</button>`;
+}
+function carPicker() {
+  const c = car();
+  const form = sheet(`<h2>Autók</h2><div class="rows carlist">${S.cars.map(x => `<button type="button" class="lrow" data-car="${x.id}" aria-checked="${x.id === c?.id}">
+      <span class="plate">${plateHtml(x)}${carBad(x) ? '<span class="dot"></span>' : ""}</span>
+      <span class="lt"><span class="t">${esc(x.model || x.name)}</span><span class="s">${esc(x.name)}${carBad(x) ? ' · <span class="c-bad">lejárt tétel</span>' : ""}</span></span>
+      <svg class="chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>`).join("")}
+    <button type="button" class="lrow addrow" data-act="addcar"><span class="lt"><span class="t">Új autó hozzáadása</span></span>${CHEV}</button></div>`, null);
+  form.addEventListener("click", e => {
+    const b = e.target.closest("[data-car], [data-act=addcar]"); if (!b) return;
+    closeSheet();
+    if (b.dataset.act) { carForm(null); return; }
+    S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home";
+    save(); render(); setTimeout(maybeAskKm, 300);
+  });
 }
 
 // km-kijelző: nagy, vékony számok doboz nélkül; alatta csík a következő olajcseréig
@@ -346,8 +345,7 @@ function odometer(c) {
       <div class="kmeta"><span>${txt}</span><span>${since}</span></div>`;
   }
   return `<div class="kmbox">
-    <div class="ktop"><div class="kmnum num" aria-label="Km-óra: ${fmtKm(c.km)}">${Number(c.km).toLocaleString("hu-HU")}<small>km</small></div>
-      <button class="kupd" data-act="km" aria-label="Km-állás frissítése"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Km</button></div>
+    <div class="kmnum num" aria-label="Km-óra: ${fmtKm(c.km)}">${Number(c.km).toLocaleString("hu-HU")}<small>km</small></div>
     ${below}
   </div>`;
 }
@@ -363,7 +361,7 @@ function entryHtml(e) {
 }
 
 function renderWelcome() {
-  return `<div class="topbar"><span></span><div class="navbtns"><button class="circ" data-act="settings" aria-label="Beállítások"><svg viewBox="0 0 24 24">${ICONS.settings}</svg></button></div></div>
+  return `<div class="topbar"><span></span><span></span><button class="circ" data-act="settings" aria-label="Beállítások"><svg viewBox="0 0 24 24">${ICONS.settings}</svg></button></div>
   <div class="welcome">
     <span class="plate big" aria-hidden="true"><span class="eu">RO</span><span class="nr">CJ 00 NEW</span></span>
     <h1>Add hozzá az első autót</h1>
@@ -400,7 +398,8 @@ function renderHome(c, list) {
   // karbantartás csak akkor látszik, ha 30 napon belül esedékes vagy közel a csere km-e
   const services = list.filter(i => i.service && due(i)).sort(byUrgency);
   const group = (title, body, extra = "") => `<section class="lgroup"><h2 class="lmonth">${title}${extra}</h2><div class="rows">${body}</div></section>`;
-  let h = odometer(c) + staleBanner();
+  const qa = (act, ic, label) => `<button class="qbtn" data-act="${act}"><span class="qcirc"><svg viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[ic]}</svg></span>${label}</button>`;
+  let h = odometer(c) + `<div class="quick">${qa("km", "gauge", "Km")}${qa("addfuel", "fuel", "Tankolás")}${qa("addlog", "wrench", "Szerviz")}${qa("addcost", "receipt", "Kiadás")}</div>` + staleBanner();
   h += `<div class="lgroups">`;
   h += group("Teendők", urgent.length ? urgent.map(i => lrowHtml(i, true)).join("") : `<div class="empty">Minden rendben, 30 napon belül nem jár le semmi.</div>`);
   if (services.length) h += group("Karbantartás", services.map(meterRowHtml).join(""));
@@ -696,7 +695,7 @@ function renderSettings() {
   };
   const check = '<svg class="chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const group = (title, body, note = "") => `<section class="lgroup"><h2 class="lmonth">${title}</h2><div class="rows">${body}</div>${note ? `<p class="setnote">${note}</p>` : ""}</section>`;
-  return `<div class="topbar"><span></span><div class="navbtns"><button class="circ" data-act="closeset" aria-label="Bezárás"><svg viewBox="0 0 24 24">${ICONS.close}</svg></button></div></div>
+  return `<div class="topbar"><span></span><span></span><button class="circ" data-act="closeset" aria-label="Bezárás"><svg viewBox="0 0 24 24">${ICONS.close}</svg></button></div>
   <h1 class="pagetitle">Beállítások</h1>
   <div class="setlist">
     <section class="lgroup"><h2 class="lmonth">Megjelenés</h2>
@@ -1388,7 +1387,8 @@ document.addEventListener("click", e => {
     case "addlog": logForm(c, null); break;
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c], null, true); break;
-    case "plusmenu": plusMenu(b); break;
+    case "kmphoto": kmSheet(c, null, true); break;
+    case "cars": carPicker(); break;
     case "settings": prevTab = tab === "settings" ? prevTab : tab; tab = "settings"; render(); window.scrollTo(0, 0); break;
     case "closeset": tab = prevTab || "home"; render(); window.scrollTo(0, 0); break;
     case "stale": staleSheet(); break;
