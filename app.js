@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.9.2";
+const APP_VERSION = "2.9.3";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -44,8 +44,13 @@ const addMonths = (d, n) => {
   d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
   return d;
 };
-const fmtKm = n => Number(n || 0).toLocaleString("hu-HU") + " km";
-const fmtMoney = n => Number(n || 0).toLocaleString("hu-HU") + " lej";
+// szám- és dátumformázók: egyszer készülnek el, utána újrahasználjuk (a toLocaleString minden hívásnál újat épít, ez lassú)
+const NUMF = new Map();
+const nfmt = (n, o) => { const k = o ? JSON.stringify(o) : ""; let f = NUMF.get(k); if (!f) NUMF.set(k, f = new Intl.NumberFormat("hu-HU", o)); return f.format(n); };
+const DF_MONTH = new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "long" });
+const DF_SHORT = new Intl.DateTimeFormat("hu-HU", { month: "short", day: "numeric" });
+const fmtKm = n => nfmt(Number(n || 0)) + " km";
+const fmtMoney = n => nfmt(Number(n || 0)) + " lej";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
 const $ = s => document.querySelector(s);
@@ -167,7 +172,7 @@ function kmStatus(c, x) {
   if (left < 0) return { s, sub, txt: `${fmtKm(-left)}-rel túllépve`, n: kShort(-left), u: kUnit(-left) + " túl", d: Math.round(left / 40), frac: 0, date: "" };
   return { s, sub, txt: `még ${fmtKm(left)}`, n: kShort(left), u: kUnit(left), d: Math.round(left / 40), frac: Math.min(1, left / span), date: "" };
 }
-function kShort(km) { return km >= 1000 ? (km / 1000).toLocaleString("hu-HU", { maximumFractionDigits: km < 10000 ? 1 : 0 }) : String(km); }
+function kShort(km) { return km >= 1000 ? nfmt(km / 1000, { maximumFractionDigits: km < 10000 ? 1 : 0 }) : String(km); }
 const kUnit = km => km >= 1000 ? "ezer km" : "km";
 function items(c) {
   const list = DOC_TYPES.map(([k, t, sub]) => ({ k, t, sub: c.notes[k] || sub, date: c.docs[k], ...dateStatus(c.docs[k]) }));
@@ -189,12 +194,12 @@ function daysText(date) {
   if (d < 0) return `${-d} napja lejárt`;
   if (d === 0) return "ma";
   if (d === 1) return "holnap";
-  return `${d.toLocaleString("hu-HU")} nap múlva`;
+  return `${nfmt(d)} nap múlva`;
 }
 const RANK = { bad: 0, warn: 1, ok: 2, none: 3 };
 const byUrgency = (a, b) => RANK[a.s] - RANK[b.s] || a.d - b.d;
-const monthLabel = s => parseDate(s).toLocaleDateString("hu-HU", { year: "numeric", month: "long" });
-const shortDate = s => parseDate(s).toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
+const monthLabel = s => DF_MONTH.format(parseDate(s));
+const shortDate = s => DF_SHORT.format(parseDate(s));
 /* ---------- km-állás: ellenőrzés beíráskor és emlékeztető ---------- */
 const KM_REMIND_DAYS = 14;
 const kmAge = c => c.kmDate ? Math.round((today() - parseDate(c.kmDate)) / DAY) : Infinity;
@@ -352,7 +357,7 @@ function odometer(c) {
       <div class="kmeta"><span>${txt}</span><span>${since}</span></div>`;
   }
   return `<div class="kmbox">
-    <div class="kmnum num" aria-label="Km-óra: ${fmtKm(c.km)}">${Number(c.km).toLocaleString("hu-HU")}<small>km</small></div>
+    <div class="kmnum num" aria-label="Km-óra: ${fmtKm(c.km)}">${nfmt(Number(c.km))}<small>km</small></div>
     ${below}
   </div>`;
 }
@@ -520,7 +525,7 @@ function fuelStats(c) {
   const recent = recentFills.length < fills.length ? consumption(recentFills) : null;
   return { gap, avg, recent, totalKm: fills.length > 1 ? fills[fills.length - 1].km - fills[0].km : 0 };
 }
-const fmtL = n => n.toLocaleString("hu-HU", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const fmtL = n => nfmt(n, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
 function renderFuel(c) {
   const st = fuelStats(c);
@@ -532,12 +537,12 @@ function renderFuel(c) {
   if (list.length) h += `<div class="stats">
       <div><span class="big num">${st.avg != null ? fmtL(st.avg) : "–"}</span><span class="s">átlag l/100 km</span></div>
       <div><span class="big num">${st.recent != null ? fmtL(st.recent) : "–"}</span><span class="s">utóbbi 1500 km</span></div>
-      <div><span class="big num">${yearCost.toLocaleString("hu-HU")}</span><span class="s">saját lej ${year}-ban</span></div></div>
+      <div><span class="big num">${nfmt(yearCost)}</span><span class="s">saját lej ${year}-ban</span></div></div>
     ${yearCovered ? `<p class="hint num">Céges kártyával fedezve ${year}-ban: ${fmtMoney(yearCovered)}. Ez nem számít bele a költségeidbe.</p>` : ""}`;
   h += `<div class="rows">${list.length ? list.map(f => `<button class="svc" data-fuel="${f.id}">
       <span class="svc-main"><span class="t num">${fmtL(Number(f.liters))} l${f.cost ? `, ${fmtMoney(f.cost)}` : ""}${f.covered ? ' <span class="tag covered">fedezve</span>' : ""}</span>
-      <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${(f.cost / f.liters).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
-      ${st.gap[f.id] != null ? `<span class="cons num">+${st.gap[f.id].toLocaleString("hu-HU")}<small>km</small></span>` : ""}</button>`).join("")
+      <span class="s num">${fmtDate(f.date)}, ${fmtKm(f.km)}${f.cost && f.liters ? `, ${nfmt(f.cost / f.liters, { maximumFractionDigits: 2 })} lej/l` : ""}${f.station ? ", " + esc(f.station) : ""}</span></span>
+      ${st.gap[f.id] != null ? `<span class="cons num">+${nfmt(st.gap[f.id])}<small>km</small></span>` : ""}</button>`).join("")
     : `<div class="empty">Még nincs tankolás. Pár tankolás után már a fogyasztást is látod.</div>`}</div>
     <p class="hint">Nem kell tele tankolni: a fogyasztást az összes tankolt literből és a megtett km-ből becsüli, ezért minél több tankolás van beírva, annál pontosabb${st.totalKm ? ` (most ${fmtKm(st.totalKm)} alapján)` : ""}. Minden tankolás a km-órát is frissíti.</p></section>`;
   return h;
@@ -657,11 +662,11 @@ function renderCosts(c) {
   if (years.length > 1) h += `<div class="segbar years" style="grid-template-columns:repeat(${years.length},1fr)" role="tablist">${years.map(yr =>
     `<button role="tab" aria-pressed="${yr === costYear}" data-year="${yr}">${yr}</button>`).join("")}</div>`;
   h += `<div class="costhead"><span class="big num">${fmtMoney(y.total)}</span>
-    <span class="hint num">${costYear}-ban${y.driven > 500 && y.total ? `, kb. ${(y.total / y.driven).toLocaleString("hu-HU", { maximumFractionDigits: 2 })} lej/km` : ""}.${y.covered ? ` Céges kártyával fedezve: ${fmtMoney(y.covered)}, ez nincs benne.` : ""}</span></div>`;
+    <span class="hint num">${costYear}-ban${y.driven > 500 && y.total ? `, kb. ${nfmt(y.total / y.driven, { maximumFractionDigits: 2 })} lej/km` : ""}.${y.covered ? ` Céges kártyával fedezve: ${fmtMoney(y.covered)}, ez nincs benne.` : ""}</span></div>`;
   h += rows.length ? `<div class="rows" role="table" aria-label="Költségek kategóriánként, ${costYear}">${rows.map(([k, val]) => `<div class="lrow crow" role="row">
       ${rowIcon(COST_ICONS[k] || "receipt")}
       <span class="lt" role="cell"><span class="t">${COST_CATS[k]}</span><span class="ctrack" role="presentation"><i style="width:${Math.max(2, val / max * 100)}%"></i></span></span>
-      <span class="ld num" role="cell">${val.toLocaleString("hu-HU")} lej<small>${Math.round(val / y.total * 100)}%</small></span></div>`).join("")}</div>`
+      <span class="ld num" role="cell">${nfmt(val)} lej<small>${Math.round(val / y.total * 100)}%</small></span></div>`).join("")}</div>`
     : `<div class="rows"><div class="empty">${costYear}-ban még nincs rögzített kiadás.</div></div>`;
   h += `</section>`;
   const manual = c.costs.filter(x => x.date.startsWith(costYear)).sort((a, b) => b.date.localeCompare(a.date));
