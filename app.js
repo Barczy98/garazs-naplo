@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.9.0";
+const APP_VERSION = "2.9.1";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -310,24 +310,26 @@ function plateHtml(x) {
 const carBad = x => [...items(x), ...personalItems(x)].some(i => i.s === "bad");
 function carPill(c) {
   const other = S.cars.some(x => x.id !== c.id && carBad(x));
-  return `<button class="carpill" data-act="cars" aria-label="Autó: ${esc(c.name)}. Autó váltása${other ? ", egy másik autónál lejárt tétel van" : ""}">
+  return `<button class="carpill" data-act="cars" aria-haspopup="menu" aria-expanded="false" aria-label="Autó: ${esc(c.name)}. Autó váltása${other ? ", egy másik autónál lejárt tétel van" : ""}">
     <span class="plate">${plateHtml(c)}${carBad(c) ? '<span class="dot"></span>' : ""}</span>
     <svg class="pchev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>${other ? '<span class="pdot"></span>' : ""}</button>`;
 }
-function carPicker() {
-  const c = car();
-  const form = sheet(`<h2>Autók</h2><div class="rows carlist">${S.cars.map(x => `<button type="button" class="lrow" data-car="${x.id}" aria-checked="${x.id === c?.id}">
+// autóválasztó: a rendszám-kapszula alól lenyíló üveg menü (a választást és az új autót a fő kattintáskezelő intézi)
+function carPicker(anchor) {
+  const old = document.getElementById("cmenu"); if (old) { old.remove(); anchor.setAttribute("aria-expanded", "false"); return; }
+  const c = car(), r = anchor.getBoundingClientRect();
+  const wrap = document.createElement("div");
+  wrap.id = "cmenu"; wrap.className = "cmenu-bg";
+  wrap.innerHTML = `<div class="cmenu" role="menu" aria-label="Autó választása" style="top:${Math.round(r.bottom + 8)}px">
+    ${S.cars.map(x => `<button role="menuitemradio" aria-checked="${x.id === c?.id}" data-car="${x.id}">
       <span class="plate">${plateHtml(x)}${carBad(x) ? '<span class="dot"></span>' : ""}</span>
       <span class="lt"><span class="t">${esc(x.model || x.name)}</span><span class="s">${esc(x.name)}${carBad(x) ? ' · <span class="c-bad">lejárt tétel</span>' : ""}</span></span>
       <svg class="chk" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>`).join("")}
-    <button type="button" class="lrow addrow" data-act="addcar"><span class="lt"><span class="t">Új autó hozzáadása</span></span>${CHEV}</button></div>`, null);
-  form.addEventListener("click", e => {
-    const b = e.target.closest("[data-car], [data-act=addcar]"); if (!b) return;
-    closeSheet();
-    if (b.dataset.act) { carForm(null); return; }
-    S.sel = b.dataset.car; if (tab === "settings" || tab === "vault") tab = "home";
-    save(); render(); setTimeout(maybeAskKm, 300);
-  });
+    <button role="menuitem" class="cadd" data-act="addcar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Új autó hozzáadása</button></div>`;
+  document.body.appendChild(wrap);
+  anchor.setAttribute("aria-expanded", "true");
+  // bármilyen koppintás bezárja; ha autóra vagy az új autóra koppintott, azt a fő kezelő intézi
+  wrap.addEventListener("click", () => { wrap.remove(); anchor.setAttribute("aria-expanded", "false"); });
 }
 
 // km-kijelző: nagy, vékony számok doboz nélkül; alatta csík a következő olajcseréig
@@ -1388,7 +1390,7 @@ document.addEventListener("click", e => {
     case "addcustom": customForm(c, null); break;
     case "calcar": exportCalendar([c], null, true); break;
     case "kmphoto": kmSheet(c, null, true); break;
-    case "cars": carPicker(); break;
+    case "cars": carPicker(b); break;
     case "settings": prevTab = tab === "settings" ? prevTab : tab; tab = "settings"; render(); window.scrollTo(0, 0); break;
     case "closeset": tab = prevTab || "home"; render(); window.scrollTo(0, 0); break;
     case "stale": staleSheet(); break;
