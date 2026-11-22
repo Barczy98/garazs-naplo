@@ -1,5 +1,5 @@
 "use strict";
-const APP_VERSION = "2.9.1";
+const APP_VERSION = "2.9.2";
 const CFG = window.APP_CONFIG || { platform: "ios", storageKey: "garazs-naplo-v1", vaultDb: "garazs-iratok" };
 const ANDROID = CFG.platform === "android";
 const KEY = CFG.storageKey;
@@ -328,8 +328,13 @@ function carPicker(anchor) {
     <button role="menuitem" class="cadd" data-act="addcar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Új autó hozzáadása</button></div>`;
   document.body.appendChild(wrap);
   anchor.setAttribute("aria-expanded", "true");
+  const close = () => { wrap.remove(); anchor.setAttribute("aria-expanded", "false"); removeEventListener("scroll", close); };
   // bármilyen koppintás bezárja; ha autóra vagy az új autóra koppintott, azt a fő kezelő intézi
-  wrap.addEventListener("click", () => { wrap.remove(); anchor.setAttribute("aria-expanded", "false"); });
+  wrap.addEventListener("click", close);
+  // görgetésre is bezárul (2.9.2), hogy ne maradjon lent a lista fölött
+  wrap.addEventListener("touchmove", close, { passive: true });
+  wrap.addEventListener("wheel", close, { passive: true });
+  addEventListener("scroll", close, { passive: true });
 }
 
 // km-kijelző: nagy, vékony számok doboz nélkül; alatta csík a következő olajcseréig
